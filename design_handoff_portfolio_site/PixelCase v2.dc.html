@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics=""><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""><link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet"><style>body{margin:0;font-family:Archivo,system-ui,sans-serif}a{color:inherit}a:hover{color:oklch(0.58 0.14 25)}@keyframes drift{from{background-position:0 0}to{background-position:-320px 0}}</style></helmet>
+<div data-frame="case" data-pkey="p" data-step="780" data-off="200" onScroll="{{ onScroll }}" style="position:relative;width:1440px;height:900px;overflow:auto;background:oklch(0.963 0.008 80);color:oklch(0.18 0.006 60);box-shadow:0 0 0 1px oklch(0.18 0.006 60 / 0.1)">
+<div style="{{ spacer }}">
+<div style="{{ stage }}">
+
+<div style="position:absolute;left:0;right:0;top:0;z-index:70;display:flex;align-items:baseline;gap:22px;padding:28px 64px;font:400 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.1em"><a href="#" onClick="{{ back }}" style="opacity:0.5;text-decoration:none;cursor:pointer">← WORK</a><span style="opacity:0.3">GOOGLE PIXEL · 2016 — 2020</span></div>
+
+<div data-screen-label="01 Intro" style="{{ cv.intro }}">
+<div style="max-width:470px">
+<div style="font:400 56px/1.02 Archivo,sans-serif;letter-spacing:-0.04em">Google Pixel<br>&amp; Android</div>
+<div style="font:400 18px/1.55 Archivo,sans-serif;opacity:0.66;padding-top:26px;text-wrap:pretty">I had the privilege to work on the Pixel 1-5. Getting to build the foundation for Google's phone with a small design team was a highlight of my career.&nbsp;<br><br>I was responsible for core system transitions, Google Assistant &amp; Search integrations, branded moments, core infrastructure, physics based motion and much more!</div>
+<div style="display:flex;gap:32px;padding:26px 0 0;margin-top:34px;border-top:1px solid oklch(0.18 0.006 60 / 0.14);font:400 9.5px/1.8 'IBM Plex Mono',monospace;letter-spacing:0.06em">
+<div style="flex:0 0 auto"><span style="opacity:0.42">YEAR</span><br>2016 — 2020</div>
+<div style="flex:1 1 190px;min-width:0"><span style="opacity:0.42">COLLABORATORS</span><br>Name Surname, Name Surname, Name Surname</div>
+</div>
+</div>
+</div>
+
+<div style="{{ cv.deckWrap }}">
+<sc-for list="{{ deck }}" as="c" hint-placeholder-count="4">
+<div style="{{ c.style }}"></div>
+</sc-for>
+</div>
+
+<div style="{{ media }}">
+<div style="{{ cv.frame }}">
+<div style="{{ cv.screen }}">
+<sc-for list="{{ shots }}" as="shot" hint-placeholder-count="9">
+<div style="{{ shot.layer }}"></div>
+</sc-for>
+<div style="{{ cv.bar }}">
+<div style="width:7px;height:7px;border-radius:50%;background:oklch(0.98 0 0 / 0.28)"></div>
+<div style="width:7px;height:7px;border-radius:50%;background:oklch(0.98 0 0 / 0.28)"></div>
+<div style="width:7px;height:7px;border-radius:50%;background:oklch(0.98 0 0 / 0.28)"></div>
+</div>
+</div>
+</div>
+</div>
+
+<div style="{{ cv.caption }}">
+<sc-for list="{{ caps }}" as="c" hint-placeholder-count="9">
+<div data-screen-label="{{ c.label }}" style="{{ c.style }}">
+<div style="font:400 26px/1.14 Archivo,sans-serif;letter-spacing:-0.028em">{{ c.t }}</div>
+<div style="padding-top:9px;font:400 9.5px/1 'IBM Plex Mono',monospace;letter-spacing:0.11em;opacity:0.4">{{ c.meta }}</div>
+</div>
+</sc-for>
+</div>
+
+<div style="{{ cv.retLabel }}">
+<a href="#" onClick="{{ back }}" style="font:400 10px/1 'IBM Plex Mono',monospace;letter-spacing:0.14em;opacity:0.55;text-decoration:none;cursor:pointer">RETURN TO WORK</a>
+</div>
+
+<div style="{{ pg.window }}">
+<div style="display:flex;align-items:center;gap:7px">
+<sc-for list="{{ win }}" as="s" hint-placeholder-count="9">
+<div data-i="{{ s.i }}" onClick="{{ jump }}" style="{{ s.hit }}">
+<div style="{{ s.style }}"></div>
+</div>
+</sc-for>
+</div>
+<div style="font:400 9px/1 'IBM Plex Mono',monospace;letter-spacing:0.12em;opacity:0.34;font-variant-numeric:tabular-nums">{{ idx }}</div>
+</div>
+
+</div>
+</div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;editLayout&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Authoring&quot;}}">
+class Component extends DCLogic {
+  state = { p: 0 };
+  shotList = [
+    { n: '01', t: 'Google Pixel & Android', meta: '', hue: 80, kind: 'portrait', intro: true },
+    { n: '02', t: 'Gesture Navigation', meta: 'PIXEL 4 · 2019', hue: 250, kind: 'portrait' },
+    { n: '03', t: 'Assistant Invocation', meta: 'PIXEL 4 · 2019', hue: 200, kind: 'portrait' },
+    { n: '04', t: 'Google Logo Animation', meta: 'BRANDED MOMENTS', hue: 30, kind: 'square' },
+    { n: '05', t: 'Pixel 2 Welcome', meta: 'BRANDED MOMENTS', hue: 60, kind: 'square' },
+    { n: '06', t: 'Boot Animation', meta: 'BRANDED MOMENTS', hue: 30, kind: 'landscape' },
+    { n: '07', t: 'App Opening', meta: 'ANDROID P', hue: 150, kind: 'portrait' },
+    { n: '08', t: 'Folder Animation', meta: 'PIXEL LAUNCHER', hue: 300, kind: 'desktop' },
+    { n: '09', t: 'Task Switching', meta: 'ANDROID O', hue: 340, kind: 'portrait' }
+  ];
+  BASE = 689;
+
+  get editing() { return !!this.props.editLayout; }
+
+  onScroll = (e) => {
+    if (this.editing) return;
+    const el = e.currentTarget, off = +el.dataset.off || 0, st = +el.dataset.step || 780;
+    this.setState({ p: Math.max(0, (el.scrollTop - off) / st) });
+  };
+  jump = (e) => {
+    const i = +e.currentTarget.dataset.i, f = e.currentTarget.closest('[data-frame]');
+    if (f) f.scrollTo({ top: (+f.dataset.off || 0) + i * (+f.dataset.step || 780), behavior: 'smooth' });
+  };
+
+  box(kind) {
+    return kind === 'square' ? { w: 470, h: 470, pad: 0, r: 20, ir: 20 }
+      : kind === 'desktop' ? { w: 680, h: 425, pad: 0, r: 14, ir: 14 }
+        : kind === 'landscape' ? { w: 710, h: 400, pad: 0, r: 14, ir: 14 }
+          : { w: 271, h: 589, pad: 8, r: 45, ir: 37 };
+  }
+
+  stage(p, a) {
+    const ease = 'cubic-bezier(.2,.85,.15,1)', edit = this.editing;
+    const shot = this.shotList[a], b0 = this.box(shot.kind);
+    const r = edit ? 0 : this.retProg(p), L = (x, y) => x + (y - x) * r;
+    const card = { w: 260, h: 565, cr: 36 };
+    const box = r > 0
+      ? { w: L(b0.w, card.w), h: L(b0.h, card.h), pad: L(b0.pad, 0), r: L(b0.r, card.cr), ir: L(b0.ir, card.cr) }
+      : b0;
+    const place = shot.intro
+      ? { left: 'auto', right: 200, top: 95, transform: 'none' }
+      : { left: '50%', right: 'auto', top: r > 0 ? L(this.BASE - b0.h, 96) : this.BASE - box.h, transform: 'translateX(-50%)' };
+    const dIntro = Math.max(0, Math.min(1, 1 - Math.abs(p) * 1.9));
+    return {
+      frame: { position: 'absolute', ...place, width: box.w, height: box.h, padding: box.pad, boxSizing: 'border-box', borderRadius: box.r, background: box.pad ? 'oklch(0.2 0.006 60)' : 'transparent', boxShadow: '0 36px 70px -34px oklch(0.35 0.02 60 / 0.5)', transition: `width .82s ${ease}, height .82s ${ease}, padding .82s ${ease}, border-radius .82s ${ease}, background .6s ease, top .82s ${ease}, left .82s ${ease}, right .82s ${ease}, transform .82s ${ease}` },
+      screen: { position: 'relative', width: '100%', height: '100%', borderRadius: box.ir, overflow: 'hidden', background: 'oklch(0.2 0.006 60)', transition: `border-radius .82s ${ease}` },
+      bar: { position: 'absolute', left: 0, right: 0, top: 0, height: 30, display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 14, background: 'oklch(0.14 0.006 60 / 0.88)', opacity: shot.kind === 'desktop' ? 1 : 0, transition: 'opacity .5s ease', zIndex: 4 },
+      intro: edit
+        ? { position: 'relative', padding: '0 120px 90px' }
+        : { position: 'absolute', left: 120, width: 500, top: 214, zIndex: 54, opacity: +dIntro.toFixed(3), transform: `translateY(${(-p * 44).toFixed(1)}px)`, pointerEvents: dIntro > 0.5 ? 'auto' : 'none', transition: 'opacity .2s linear' },
+      caption: edit
+        ? { position: 'relative', display: 'flex', flexDirection: 'column', gap: 24, padding: '0 120px 90px' }
+        : { position: 'absolute', left: 0, right: 0, top: this.BASE + 26, height: 56, zIndex: 56, textAlign: 'center', opacity: +(1 - Math.min(1, r * 2.2)).toFixed(3) },
+      deckWrap: edit || r <= 0 ? { display: 'none' } : { position: 'absolute', inset: 0, zIndex: 51, pointerEvents: 'none' },
+      retLabel: edit ? { display: 'none' } : { position: 'absolute', left: 0, right: 0, top: 690, zIndex: 60, textAlign: 'center', opacity: +Math.max(0, (r - 0.55) / 0.45).toFixed(3), transform: `translateY(${((1 - r) * 16).toFixed(1)}px)` }
+    };
+  }
+
+  retProg(p) {
+    return Math.max(0, Math.min(1, (p - (this.shotList.length - 1)) / 0.85));
+  }
+
+  deckCards(r) {
+    const e = r * r * (3 - 2 * r);
+    return [0, 1, 2, 3].map((k) => {
+      const sc = [1, 0.94, 0.885, 0.83][k], rot = [0, -5.5, 4.5, -2.5][k], dx = [0, -46, 52, -18][k], dy = [0, 16, 30, 46][k];
+      return {
+        key: 'c' + k,
+        style: {
+          position: 'absolute', left: '50%', top: 96, width: 260, height: 565,
+          borderRadius: 36, background: 'oklch(0.905 0.012 80)',
+          boxShadow: '0 30px 60px -34px oklch(0.35 0.02 60 / 0.45)',
+          transform: `translateX(calc(-50% + ${(dx * e).toFixed(1)}px)) translateY(${(dy * e).toFixed(1)}px) rotate(${(rot * e).toFixed(2)}deg) scale(${(1 - (1 - sc) * e).toFixed(3)})`,
+          opacity: +Math.max(0, Math.min(1, (r - k * 0.11) * 3)).toFixed(3)
+        }
+      };
+    });
+  }
+
+  captions(p) {
+    const edit = this.editing;
+    return this.shotList.map((s, i) => {
+      const d = p - i;
+      const op = s.intro ? 0 : +Math.max(0, 1 - Math.abs(d) * 2.4).toFixed(3);
+      return {
+        key: s.n, t: s.t, meta: s.meta, label: s.n + ' ' + s.t,
+        style: edit
+          ? { position: 'relative' }
+          : { position: 'absolute', left: 0, right: 0, top: 0, opacity: op, transform: `translateY(${(d * 26).toFixed(1)}px)`, transition: 'opacity .2s linear' }
+      };
+    });
+  }
+
+  shotLayers(a) {
+    return this.shotList.map((s, i) => ({
+      key: s.n,
+      layer: {
+        position: 'absolute', inset: 0, opacity: i === a ? 1 : 0,
+        transition: 'opacity .6s cubic-bezier(.2,.85,.15,1)',
+        background: `repeating-linear-gradient(135deg,oklch(0.5 0.1 ${s.hue}) 0 18px,oklch(0.4 0.09 ${s.hue}) 18px 36px)`,
+        backgroundSize: '420px 100%', animation: `drift ${5 + (i % 3)}s linear infinite`
+      }
+    }));
+  }
+
+  ticks(a) {
+    return this.shotList.map((s, i) => {
+      const d = Math.abs(i - a);
+      return {
+        key: s.n, i,
+        hit: { width: i === a ? 30 : 12, height: 20, display: 'flex', alignItems: 'center', cursor: 'pointer', transition: 'width .45s cubic-bezier(.2,.85,.15,1)' },
+        style: { width: '100%', height: 1, background: 'currentColor', opacity: d === 0 ? 0.72 : (d === 1 ? 0.26 : 0.13), transition: 'opacity .35s ease' }
+      };
+    });
+  }
+
+  renderVals() {
+    const edit = this.editing;
+    const p = edit ? 0 : (this.state.p || 0), n = this.shotList.length;
+    const a = Math.max(0, Math.min(n - 1, Math.round(p)));
+    const r = edit ? 0 : this.retProg(p);
+    return {
+      onScroll: this.onScroll, jump: this.jump,
+      back: this.props.onBack ?? ((e) => e.preventDefault()),
+      cv: this.stage(p, a), shots: this.shotLayers(a), win: this.ticks(a), caps: this.captions(p), deck: this.deckCards(r),
+      pg: { window: edit ? { display: 'none' } : { position: 'absolute', left: 0, right: 0, bottom: 46, zIndex: 70, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, opacity: +(1 - Math.min(1, r * 2.2)).toFixed(3), pointerEvents: r > 0.3 ? 'none' : 'auto' } },
+      idx: String(a + 1).padStart(2, '0') + ' / ' + String(n).padStart(2, '0'),
+      spacer: edit ? { position: 'relative' } : { position: 'relative', height: 200 + n * 780 + 1000 },
+      stage: edit ? { position: 'relative', padding: '96px 0 120px' } : { position: 'sticky', top: 0, height: 900, overflow: 'hidden' },
+      media: edit ? { display: 'none' } : { position: 'absolute', inset: 0, zIndex: 52 }
+    };
+  }
+}
+
+</script>
+</body>
+</html>

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics=""><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""><link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap" rel="stylesheet"><style>body{margin:0;font-family:Archivo,system-ui,sans-serif}a{color:inherit}a:hover{color:oklch(0.58 0.14 25)}@keyframes drift{from{background-position:0 0}to{background-position:-320px 0}}</style></helmet>
+<div style="position:relative;width:1440px;height:900px;overflow:hidden;background:oklch(0.963 0.008 80);color:oklch(0.18 0.006 60);box-shadow:0 0 0 1px oklch(0.18 0.006 60 / 0.1)">
+
+<div style="{{ homeStyle }}">
+<div data-frame="home" data-intro="440" data-step="440" onScroll="{{ onScroll }}" style="position:relative;width:1440px;height:900px;overflow:auto;scroll-snap-type:y proximity">
+<div style="position:relative;height:4020px">
+<div style="position:sticky;top:0;height:900px;overflow:hidden">
+
+<div style="position:absolute;left:0;right:0;top:0;z-index:70;display:flex;justify-content:space-between;align-items:baseline;padding:28px 64px">
+<div style="font:600 15px/1 Archivo,sans-serif;letter-spacing:-0.01em">Remington McElhaney</div>
+<div style="display:flex;gap:26px;font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:0.06em;text-transform:uppercase"><span>Work</span><span style="opacity:0.42">About</span></div>
+</div>
+
+<div style="{{ heroStyle }}">
+<div style="width:100%;text-align:center;font:400 42px/1.18 Archivo,sans-serif;letter-spacing:-0.03em;text-wrap:pretty;line-height:50.81px">Hey, I'm Remington and I make software come to life with motion.</div>
+</div>
+
+<div style="{{ chromeStyle }}">
+<div style="position:absolute;left:120px;top:50%;transform:translateY(-50%);width:460px;z-index:56">
+<sc-for list="{{ ledger }}" as="row" hint-placeholder-count="6">
+<div data-i="{{ row.i }}" onClick="{{ jumpTo }}" style="{{ row.rowStyle }}">
+<div style="{{ row.nameStyle }}">{{ row.t }}</div>
+<div style="{{ row.metaStyle }}">{{ row.yr }}</div>
+</div>
+</sc-for>
+</div>
+</div>
+
+<sc-for list="{{ pile }}" as="card" hint-placeholder-count="3">
+<div data-i="{{ card.i }}" onClick="{{ open }}" style="{{ card.style }}">
+<div style="{{ card.screen }}">
+<sc-if value="{{ card.hasVideo }}" hint-placeholder-val="{{ false }}">
+<video src="{{ card.vid }}" ref="{{ vidRef }}" autoplay="" muted="" loop="" playsinline="" style="{{ card.vidStyle }}"></video>
+</sc-if>
+</div>
+</div>
+</sc-for>
+
+</div>
+<div style="position:absolute;inset:0;display:flex;flex-direction:column;pointer-events:none">
+<div style="height:440px;scroll-snap-align:start"></div>
+<div style="height:440px;scroll-snap-align:start"></div>
+<div style="height:440px;scroll-snap-align:start"></div>
+<div style="height:440px;scroll-snap-align:start"></div>
+<div style="height:440px;scroll-snap-align:start"></div>
+<div style="height:440px;scroll-snap-align:start"></div>
+<div style="height:440px;scroll-snap-align:start"></div>
+<div style="height:440px;scroll-snap-align:start"></div>
+<div style="height:440px;scroll-snap-align:start"></div>
+</div>
+</div>
+</div>
+</div>
+
+<div style="{{ caseStyle }}">
+<sc-if value="{{ onPixel }}" hint-placeholder-val="{{ false }}">
+<dc-import name="PixelCase v2" progress="window" on-back="{{ goHome }}" hint-size="1440px,900px" style="display:block;width:1440px;height:900px"></dc-import>
+</sc-if>
+<sc-if value="{{ onGeneric }}" hint-placeholder-val="{{ false }}">
+<dc-import name="ProjectCase" title="{{ selTitle }}" year="{{ selYear }}" overview="{{ selOverview }}" collaborators="{{ selCollab }}" shot-count="{{ selShots }}" on-back="{{ goHome }}" hint-size="1440px,900px" style="display:block;width:1440px;height:900px"></dc-import>
+</sc-if>
+<div>{{ noteText }}</div>
+</div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;heroWidth&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:760,&quot;tsType&quot;:&quot;number&quot;,&quot;min&quot;:440,&quot;max&quot;:1200,&quot;step&quot;:10,&quot;unit&quot;:&quot;px&quot;,&quot;section&quot;:&quot;Hero&quot;}}">
+class Component extends DCLogic {
+  state = { route: 'home', p: 0, pi: 0, sel: null };
+
+  projects = [
+    { t: 'Airbnb Setup', year: '2025', hue: 30, video: 'media/airbnb-setup.mp4' },
+    { t: 'Airbnb Host Experience', year: '2025', hue: 340 },
+    { t: 'Airbnb Listing Editor', year: '2024', hue: 300 },
+    { t: 'Gesture Navigation', year: '2020', hue: 250 },
+    { t: 'The New Google Assistant', year: '2020', hue: 200 },
+    { t: 'Google Pixel', year: '2018', hue: 80 }
+  ];
+
+  onScroll = (e) => {
+    const el = e.currentTarget, io = +el.dataset.intro || 440, st = +el.dataset.step || 440;
+    this.setState({ p: Math.max(0, (el.scrollTop - io) / st), pi: Math.min(1, el.scrollTop / io) });
+  };
+  jumpTo = (e) => {
+    const i = +e.currentTarget.dataset.i, f = e.currentTarget.closest('[data-frame]');
+    if (f) f.scrollTo({ top: (+f.dataset.intro || 0) + i * (+f.dataset.step || 440), behavior: 'smooth' });
+  };
+  open = (e) => this.setState({ route: 'case', sel: +e.currentTarget.dataset.i });
+  goHome = (e) => { if (e && e.preventDefault) e.preventDefault(); this.setState({ route: 'home' }); };
+
+  pileCards(p, intro) {
+    const ease = 'cubic-bezier(.2,.85,.15,1)';
+    const cx = Math.round(720 + intro * 265), cy = Math.round(770 - intro * 275);
+    const w = 322, h = 700;
+    return this.projects.map((pr, i) => {
+      const rnd = (k) => { const v = Math.sin((i + 1) * 12.9898 + k * 78.233) * 43758.5453; return v - Math.floor(v); };
+      const jx = (rnd(1) * 2 - 1) * 30, jy = (rnd(2) * 2 - 1) * 16, jr = (rnd(3) * 2 - 1) * 7;
+      const n = this.projects.length;
+      const kc = (((i - p) % n) + n) % n;
+      const deep = n - 1;
+      const ease = Math.min(1, kc);
+      const pos = (k) => ({
+        x: k * 9 + jx * 0.4 * Math.min(1, k),
+        y: -k * 15 + jy * 0.55 * Math.min(1, k),
+        s: 1 - k * 0.028,
+        r: k < 0.02 ? 0 : jr * (0.3 + 0.12 * k)
+      });
+      let x, y, sc, rot, ry = 0, op, z;
+      if (kc >= deep) {
+        const t = 1 - (kc - deep), ew = t * t * (3 - 2 * t), arc = Math.sin(t * Math.PI);
+        const d = pos(deep);
+        x = d.x * ew + arc * 198;
+        y = d.y * ew - arc * 40;
+        sc = 1 + (d.s - 1) * ew;
+        rot = d.r * ew + arc * 7;
+        ry = -arc * 18;
+        op = +(1 - 0.78 * ew).toFixed(3);
+        z = t < 0.5 ? 60 : Math.round(50 - deep);
+      } else {
+        const g = pos(kc);
+        x = g.x; y = g.y; sc = g.s; rot = g.r;
+        op = Math.max(0.24, 1 - kc * 0.11); z = Math.round(50 - kc);
+      }
+      void ease;
+      return {
+        key: pr.t, t: pr.t, i, spec: pr.year,
+        hasVideo: !!pr.video, vid: pr.video || '',
+        vidStyle: { position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' },
+        cap: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: '18px 16px', background: 'linear-gradient(oklch(0.12 0.006 60 / 0),oklch(0.12 0.006 60 / 0.78))' },
+        screen: { position: 'absolute', inset: 0, borderRadius: 44, overflow: 'hidden' },
+        style: {
+          position: 'absolute', left: Math.round(cx - w / 2), top: Math.round(cy - h / 2),
+          width: w, height: h, boxSizing: 'border-box', borderRadius: 44,
+          background: `repeating-linear-gradient(135deg,oklch(0.5 0.1 ${pr.hue}) 0 18px,oklch(0.4 0.09 ${pr.hue}) 18px 36px)`,
+          backgroundSize: '420px 100%', animation: `drift ${5 + (i % 3)}s linear infinite`,
+          boxShadow: kc < 0.4 || kc >= deep ? '0 28px 56px -28px oklch(0.35 0.02 60 / 0.45), inset 0 0 0 1px oklch(0.18 0.006 60 / 0.1)' : '0 16px 40px -26px oklch(0.35 0.02 60 / 0.38), inset 0 0 0 1px oklch(0.18 0.006 60 / 0.08)',
+          transform: `perspective(1600px) translate(${x.toFixed(1)}px,${y.toFixed(1)}px) scale(${sc.toFixed(3)}) rotate(${rot.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg)`,
+          transformOrigin: '50% 50%', opacity: +Math.max(0, op).toFixed(3), zIndex: z,
+          cursor: 'pointer',
+          pointerEvents: kc < 0.4 ? 'auto' : 'none',
+          transition: `opacity .3s ease, box-shadow .5s ${ease}`
+        }
+      };
+    });
+  }
+
+  ledgerRows(p) {
+    const n = this.projects.length;
+    const a = ((Math.round(p || 0) % n) + n) % n;
+    return this.projects.map((pr, i) => {
+      const on = i === a;
+      return {
+        key: pr.t, t: pr.t, i, yr: pr.year,
+        rowStyle: { display: 'grid', gridTemplateColumns: '1fr auto', gap: 24, alignItems: 'center', padding: '12px 0', cursor: 'pointer' },
+        nameStyle: { font: `400 ${on ? 28 : 20}px/1.1 Archivo,sans-serif`, letterSpacing: on ? '-0.032em' : '-0.024em', opacity: on ? 1 : 0.36, transition: 'font-size .45s cubic-bezier(.2,.85,.15,1), opacity .35s ease, letter-spacing .45s ease' },
+        metaStyle: { font: "400 9.5px/1 'IBM Plex Mono',monospace", fontVariantNumeric: 'tabular-nums', letterSpacing: '0.09em', opacity: on ? 0.5 : 0.2, transition: 'opacity .35s ease' }
+      };
+    });
+  }
+
+  renderVals() {
+    const p = this.state.p || 0, i = this.state.pi || 0;
+    const onCase = this.state.route === 'case';
+    const sel = this.state.sel;
+    const pr = sel != null ? this.projects[sel] : null;
+    const isPixel = !!pr && pr.t === 'Google Pixel';
+    const placeholder = false;
+    return {
+      onCase,
+      onPixel: onCase && isPixel,
+      onGeneric: onCase && !!pr && !isPixel,
+      selTitle: pr ? pr.t : '',
+      selYear: pr ? pr.year : '',
+      selOverview: pr ? (pr.overview ?? 'Overview copy goes here.') : '',
+      selCollab: pr ? (pr.collaborators ?? 'Name Surname, Name Surname') : '',
+      selShots: 5,
+      onScroll: this.onScroll, jumpTo: this.jumpTo, open: this.open, goHome: this.goHome,
+      vidRef: (n) => { if (n) { n.muted = true; const q = n.play(); if (q && q.catch) q.catch(() => {}); } },
+      pile: this.pileCards(p, i),
+      ledger: this.ledgerRows(p),
+      heroStyle: { position: 'absolute', left: 0, right: 0, top: 176, zIndex: 52, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 26, paddingLeft: `calc(50% - ${(this.props.heroWidth ?? 760) / 2}px)`, paddingRight: `calc(50% - ${(this.props.heroWidth ?? 760) / 2}px)`, boxSizing: 'border-box', opacity: +Math.max(0, 1 - i * 1.9).toFixed(3), transform: `translate(${(-i * 150).toFixed(1)}px,${(-i * 44).toFixed(1)}px)`, pointerEvents: i > 0.4 ? 'none' : 'auto' },
+      chromeStyle: { opacity: +Math.max(0, Math.min(1, (i - 0.45) * 2.2)).toFixed(3), transition: 'opacity .35s ease' },
+      homeStyle: { position: 'absolute', inset: 0, opacity: onCase ? 0 : 1, transform: onCase ? 'scale(0.985)' : 'none', pointerEvents: onCase ? 'none' : 'auto', transition: 'opacity .5s ease, transform .7s cubic-bezier(.2,.85,.15,1)' },
+      caseStyle: { position: 'absolute', inset: 0, opacity: onCase ? 1 : 0, transform: onCase ? 'none' : 'scale(1.015)', pointerEvents: onCase ? 'auto' : 'none', transition: 'opacity .5s ease .06s, transform .7s cubic-bezier(.2,.85,.15,1)' },
+      noteStyle: { position: 'absolute', left: 120, top: 62, zIndex: 90, font: "400 9.5px/1 'IBM Plex Mono',monospace", letterSpacing: '0.1em', opacity: placeholder ? 0.42 : 0, transition: 'opacity .3s ease', pointerEvents: 'none' },
+      noteText: placeholder && sel != null ? 'PLACEHOLDER — ' + this.projects[sel].t.toUpperCase() + ' WILL GET ITS OWN CASE FILE' : ''
+    };
+  }
+}
+
+</script>
+</body>
+</html>
