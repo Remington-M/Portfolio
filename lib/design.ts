@@ -355,11 +355,20 @@ export const DRAG = {
   clickSlop: 6,
   /** Release faster than this and the card is thrown, whatever the distance. */
   flingVelocity: 520,
-  /** Or drag it this far and let go, however slowly. */
-  flingDistance: 96,
-  /** Tilt while dragging, so the card banks into the direction of travel. */
-  rotatePerPx: 0.05,
-  rotateMax: 14,
+  /**
+   * Distance no longer lives here: how far a drag has to travel is judged in
+   * deck units against `DECK_MOTION.commit`, so it means the same thing on a
+   * phone as on a wide display and lines up with the threshold a scroll has to
+   * cross. Only speed is a pixel quantity, because speed is about the hand.
+   */
+  /**
+   * How much of a vertical drag the held card takes on.
+   *
+   * Damped rather than one-to-one: the card is travelling a fixed arc, and
+   * following the finger up and down in full fights that. Enough to feel
+   * picked up, not enough to leave the path.
+   */
+  verticalGive: 0.25,
   /** The held card lifts slightly out of the stack. */
   liftScale: 1.035,
   /**

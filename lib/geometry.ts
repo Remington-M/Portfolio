@@ -199,6 +199,13 @@ export function deckCard(
   intro: number,
   stage: Stage,
   reduced: boolean,
+  /**
+   * Which side of the stack the departing card travels around: 1 for the
+   * right, -1 for the left. Scrolling always goes right, as authored; a card
+   * thrown to the left goes around the left, because watching it double back
+   * across the deck to exit the far side reads as the throw being ignored.
+   */
+  dir: 1 | -1 = 1,
 ): Geo {
   const cfg = stage.mobile ? DECK.mobile : DECK.desktop;
   const size = deckCardSize(stage);
@@ -257,11 +264,11 @@ export function deckCard(
     const ease = smoothstep(t);
     const arc = Math.sin(t * Math.PI);
     const deep = rest(deepest);
-    x = deep.x * ease + arc * size.width * cfg.arcXWidths;
+    x = deep.x * ease + arc * size.width * cfg.arcXWidths * dir;
     y = deep.y * ease + arc * cfg.arcY * k;
     scale = 1 + (deep.scale - 1) * ease;
-    rotate = reduced ? 0 : deep.rotate * ease + arc * cfg.arcRot;
-    rotateY = reduced ? 0 : arc * cfg.arcRotY;
+    rotate = reduced ? 0 : deep.rotate * ease + arc * cfg.arcRot * dir;
+    rotateY = reduced ? 0 : arc * cfg.arcRotY * dir;
     opacity = 1 - 0.78 * ease;
     z = t < 0.5 ? 60 : 50 - deepest;
   } else {
@@ -287,8 +294,9 @@ export function deckCard(
     z = 50 - depth;
   }
 
-  // The whole stack slides aside while a card goes round it, and returns.
-  const shift = reduced ? 0 : cfg.shiftX * pulse * k;
+  // The stack slides aside while a card goes round it, and returns — away
+  // from whichever side the card is passing on.
+  const shift = reduced ? 0 : cfg.shiftX * pulse * k * dir;
 
   return {
     x: cx + shift - size.width / 2 + x,
