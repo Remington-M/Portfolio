@@ -17,8 +17,13 @@ export default function Header({
   variant: "home" | "case";
   kicker?: string;
 }) {
-  const { mobile } = useStage();
-  const pad = mobile ? "22px 24px" : "28px 64px";
+  const { mobile, stage } = useStage();
+  const ts = stage.ts;
+  // The header rides the top edge of the scaled stage, not the raw viewport,
+  // so its margin stays in proportion once the scale clamps on a tall display.
+  const pad = mobile
+    ? `${stage.top + 22 * stage.s}px ${24 * ts}px`
+    : `${stage.top + 28 * stage.s}px ${64 * ts}px`;
 
   if (variant === "case") {
     return (
@@ -31,11 +36,11 @@ export default function Header({
           zIndex: 70,
           display: "flex",
           alignItems: "baseline",
-          gap: 22,
+          gap: 22 * ts,
           padding: pad,
           fontFamily: "var(--font-mono)",
           fontWeight: 400,
-          fontSize: 10,
+          fontSize: 10 * ts,
           letterSpacing: "0.1em",
         }}
       >
@@ -67,7 +72,7 @@ export default function Header({
           style={{
             fontFamily: "var(--font-display)",
             fontWeight: 600,
-            fontSize: 15,
+            fontSize: 15 * ts,
             lineHeight: 1,
             letterSpacing: "-0.01em",
           }}
@@ -79,8 +84,8 @@ export default function Header({
         style={{
           ...mono,
           display: "flex",
-          gap: mobile ? 16 : 26,
-          fontSize: mobile ? 10 : 12,
+          gap: (mobile ? 16 : 26) * ts,
+          fontSize: (mobile ? 10 : 12) * ts,
           lineHeight: 1,
         }}
       >

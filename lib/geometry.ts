@@ -5,6 +5,7 @@ import {
   CASE,
   DESKTOP_REF,
   MOBILE_REF,
+  SCALE,
   frameBox,
   type ShotKind,
 } from "./design";
@@ -33,20 +34,48 @@ export type Stage = {
   w: number;
   h: number;
   mobile: boolean;
-  /** Uniform scale applied to authored vertical geometry on short viewports. */
+  /** Uniform scale applied to authored geometry. 1 at the reference height. */
   s: number;
+  /**
+   * Type scale. Tracks `s` upward at a reduced rate and never goes below 1 —
+   * type that grows as fast as the cards ends up shouting.
+   */
+  ts: number;
+  /**
+   * Vertical offset of the scaled authored stage inside the viewport. Zero
+   * wherever `s` is unclamped; non-zero only once the scale hits a limit and
+   * there is slack to centre.
+   */
+  top: number;
 };
 
 export function makeStage(vw: number, vh: number, mobile: boolean): Stage {
-  if (mobile) {
-    return { w: vw, h: vh, mobile, s: clamp(vh / MOBILE_REF.h, 0.72, 1) };
-  }
+  const ref = mobile ? MOBILE_REF : DESKTOP_REF;
+  const min = mobile ? SCALE.min.mobile : SCALE.min.desktop;
+  const s = clamp(vh / ref.h, min, SCALE.max);
   return {
-    w: Math.min(vw, DESKTOP_REF.w),
+    w: mobile ? vw : Math.min(vw, DESKTOP_REF.w),
     h: vh,
     mobile,
-    s: clamp(vh / DESKTOP_REF.h, 0.68, 1),
+    s,
+    ts: 1 + Math.max(0, s - 1) * SCALE.typeRate,
+    // Split the slack. Inside the unclamped range this is exactly 0, so the
+    // designed viewports are untouched.
+    top: (vh - ref.h * s) / 2,
   };
+}
+
+/**
+ * Map a y authored against the reference stage into viewport pixels.
+ *
+ * Everything vertical goes through here rather than being expressed as a
+ * fraction of viewport height. The two agree exactly while the scale is
+ * unclamped; past the clamp, a fraction of the viewport would keep drifting
+ * apart from geometry that has stopped growing, which is what opened the gap
+ * between the frame and its baseline on tall displays.
+ */
+export function stageY(stage: Stage, authored: number): number {
+  return stage.top + authored * stage.s;
 }
 
 /**
@@ -73,10 +102,24 @@ export function deckCardSize(stage: Stage) {
   const height = clamp(
     stage.h * (cfg.cardHeight / ref),
     cfg.cardHeightMin,
-    cfg.cardHeight,
+    cfg.cardHeight * SCALE.max,
   );
   const width = height * CARD_RATIO;
   return { width, height, radius: width * RADIUS_RATIO, k: height / cfg.cardHeight };
+}
+
+/**
+ * How far a card swings out on its way to the back, in stage pixels.
+ *
+ * Derived from card width rather than being a fixed distance, so the card
+ * clears the stack by the same proportion at every viewport size. Also the
+ * natural unit for a throw: flinging one of these per second is one card per
+ * second, which is what makes a fling feel like the same motion the scroll
+ * produces rather than a separate animation bolted on.
+ */
+export function deckThrow(stage: Stage): number {
+  const cfg = stage.mobile ? DECK.mobile : DECK.desktop;
+  return deckCardSize(stage).width * cfg.arcXWidths;
 }
 
 /** Where the deck's shared origin sits, as the hero clears out of the way. */
@@ -86,7 +129,7 @@ export function deckOrigin(stage: Stage, intro: number) {
     const cfg = DECK.mobile;
     const cx = stage.w * cfg.cx[0];
     const cy =
-      cfg.cyPx.top * stage.s +
+      stageY(stage, cfg.cyPx.top) +
       size.height / 2 +
       (1 - intro) * cfg.cyPx.rise * stage.s;
     return { cx, cy };
@@ -94,8 +137,52 @@ export function deckOrigin(stage: Stage, intro: number) {
   const cfg = DECK.desktop;
   return {
     cx: stage.w * lerp(cfg.cx[0], cfg.cx[1], intro),
-    cy: stage.h * lerp(cfg.cy[0], cfg.cy[1], intro),
+    cy: stageY(stage, DESKTOP_REF.h * lerp(cfg.cy[0], cfg.cy[1], intro)),
   };
+}
+
+/**
+ * How many places back in the stack card `i` is sitting, given deck position
+ * `p`. Fractional, and wraps — a card at depth `count - 1 + f` is mid-shuffle.
+ */
+export function cardDepth(i: number, count: number, p: number): number {
+  return (((i - p) % count) + count) % count;
+}
+
+/**
+ * Shuffle phase, 0 at rest and peaking at 1 half way through a card's trip to
+ * the back. Drives the pull-forward of everything still in the stack.
+ */
+export function shufflePulse(p: number): number {
+  // sin SQUARED, not sin.
+  //
+  // Both are zero at every whole card, but plain sin arrives there with a
+  // non-zero slope, so a spring settling around a whole number — exactly what
+  // a fling does — drives the pull back and forth through that corner and the
+  // stack visibly jiggles. Squaring flattens the curve at both ends, so an
+  // overshoot oscillating around the target produces almost no pull at all and
+  // the cards simply come to rest.
+  const s = Math.sin((p - Math.floor(p)) * Math.PI);
+  return s * s;
+}
+
+/**
+ * Stacking order for a deck card.
+ *
+ * Kept separate from `deckCard` because the cards each run on a slightly
+ * delayed deck position for the stagger, and stacking must not be delayed with
+ * them — two cards briefly disagreeing about their depth is invisible, two
+ * cards briefly disagreeing about who is in front is not. So this is always
+ * asked the true, undelayed position.
+ */
+export function deckZ(i: number, count: number, p: number): number {
+  const depth = cardDepth(i, count, p);
+  const deepest = count - 1;
+  if (depth >= deepest) {
+    const t = 1 - (depth - deepest);
+    return t < 0.5 ? 60 : 50 - deepest;
+  }
+  return Math.round(50 - depth);
 }
 
 /**
@@ -120,10 +207,37 @@ export function deckCard(
 
   const jx = reduced ? 0 : signedJitter(i, 1, cfg.jitter[0]) * k;
   const jy = reduced ? 0 : signedJitter(i, 2, cfg.jitter[1]) * k;
-  const jr = reduced ? 0 : signedJitter(i, 3, cfg.jitter[2]);
 
-  const depth = (((i - p) % count) + count) % count;
+  /**
+   * Rotation splays to alternating sides, with a seeded magnitude.
+   *
+   * Left to the raw seed the scatter is lopsided — it happens to give the two
+   * cards you actually see -1.1 and -2.9 degrees while burying +5.7 further
+   * back, so the whole deck reads as leaning one way. Forcing the sign to
+   * alternate and keeping the seeded size gives a stack that sits straight on
+   * and splays to both sides, which is the intended read, without going back
+   * to a uniform fan.
+   */
+  const splay = i % 2 === 0 ? -1 : 1;
+  const jr = reduced
+    ? 0
+    : Math.abs(signedJitter(i, 3, cfg.jitter[2])) * splay;
+
+  const depth = cardDepth(i, count, p);
   const deepest = count - 1;
+
+  /**
+   * The stack takes up the space the departing card is vacating: every card
+   * still in it eases forward by a fraction of a depth step, most at the front,
+   * tapering to nothing a few cards back. Driven off the shuffle phase rather
+   * than off the departing card, so it is still a pure function of `p` and
+   * still scrubs backwards exactly.
+   */
+  const pulse = reduced ? 0 : shufflePulse(p);
+  const pullAt = (d: number) => {
+    const reach = Math.max(0, 1 - d / cfg.pullReach);
+    return { depth: cfg.pull * pulse * reach, rot: cfg.pullRot * pulse * reach };
+  };
 
   /** Resting position for a card `d` places back in the stack. */
   const rest = (d: number) => ({
@@ -143,7 +257,7 @@ export function deckCard(
     const ease = smoothstep(t);
     const arc = Math.sin(t * Math.PI);
     const deep = rest(deepest);
-    x = deep.x * ease + arc * cfg.arcX * k;
+    x = deep.x * ease + arc * size.width * cfg.arcXWidths;
     y = deep.y * ease + arc * cfg.arcY * k;
     scale = 1 + (deep.scale - 1) * ease;
     rotate = reduced ? 0 : deep.rotate * ease + arc * cfg.arcRot;
@@ -151,17 +265,33 @@ export function deckCard(
     opacity = 1 - 0.78 * ease;
     z = t < 0.5 ? 60 : 50 - deepest;
   } else {
-    const g = rest(depth);
+    const pull = pullAt(depth);
+    const g = rest(Math.max(0, depth - pull.depth));
+    // While the deck is still assembling out of the hero the cards carry an
+    // extra lean that resolves into their resting scatter, so the intro is a
+    // rotation as well as a move rather than a block sliding into place.
+    const introLean = reduced ? 0 : (1 - intro) * cfg.introRot * splay;
     x = g.x;
     y = g.y;
     scale = g.scale;
-    rotate = g.rotate;
+    /**
+     * The front card is always square to the viewer.
+     *
+     * It is the one being read — and once there is real footage in it, a
+     * screen recording sitting at an angle is just a crooked video. Every
+     * rotation the stack carries fades out as a card reaches the front, so it
+     * arrives upright rather than snapping straight.
+     */
+    rotate = (g.rotate + pull.rot + introLean) * Math.min(1, depth);
     opacity = Math.max(0.24, 1 - depth * cfg.dOpacity);
     z = 50 - depth;
   }
 
+  // The whole stack slides aside while a card goes round it, and returns.
+  const shift = reduced ? 0 : cfg.shiftX * pulse * k;
+
   return {
-    x: cx - size.width / 2 + x,
+    x: cx + shift - size.width / 2 + x,
     y: cy - size.height / 2 + y,
     w: size.width,
     h: size.height,
@@ -196,6 +326,18 @@ export function returnProgress(cp: number, shots: number): number {
 }
 
 /**
+ * The shared bottom edge every device shape bottoms out on.
+ *
+ * Authored as 689 on the 900px stage. Expressed through `stageY` so it tracks
+ * the frame, which is the whole point of a shared baseline — as a raw fraction
+ * of viewport height it kept sliding down a tall screen while the frame it was
+ * supposed to sit under had stopped growing.
+ */
+export function caseBaseline(stage: Stage): number {
+  return stageY(stage, DESKTOP_REF.h * CASE.baseline);
+}
+
+/**
  * The morphing device frame.
  *
  * On the intro screen it sits right of the text. From the first shot on it
@@ -222,17 +364,17 @@ export function caseFrame(
   const radius = (r > 0 ? L(base.r, card.r) : base.r) * s;
   const innerRadius = (r > 0 ? L(base.ir, card.r) : base.ir) * s;
 
-  const baseline = stage.h * CASE.baseline;
+  const baseline = caseBaseline(stage);
   const introScreen = cp < 0.5 && r === 0;
 
   let x: number, y: number;
   if (introScreen) {
     // Intro: parked at the right of the stage, beside the text column.
     x = stage.w - 200 * s - base.w * s;
-    y = 95 * s;
+    y = stageY(stage, 95);
   } else {
     x = stage.w / 2 - w / 2;
-    y = r > 0 ? L(baseline - base.h * s, card.top * s) : baseline - h;
+    y = r > 0 ? L(baseline - base.h * s, stageY(stage, card.top)) : baseline - h;
   }
 
   return {
@@ -266,7 +408,7 @@ export function ghostCards(r: number, stage: Stage) {
     w: card.w * s,
     h: card.h * s,
     radius: card.r * s,
-    top: card.top * s,
+    top: stageY(stage, card.top),
     dx: g.dx * e * s,
     dy: g.dy * e * s,
     rotate: g.rot * e,
@@ -317,7 +459,7 @@ export function railCard(
 
   return {
     x: railPadding(stage) + i * railPitch(stage) - rp * railPitch(stage),
-    y: m.top * s + (reduced ? 0 : near * 8),
+    y: stageY(stage, m.top) + (reduced ? 0 : near * 8),
     w,
     h,
     radius: m.r * s,

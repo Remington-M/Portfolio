@@ -7,7 +7,13 @@ import { useStage } from "@/components/media/stage";
 import Header from "@/components/Header";
 import Ticks from "@/components/Ticks";
 import { CASE, SHADOW } from "@/lib/design";
-import { caseScrollHeight, ghostCards, returnProgress } from "@/lib/geometry";
+import {
+  caseBaseline,
+  caseScrollHeight,
+  ghostCards,
+  returnProgress,
+  stageY,
+} from "@/lib/geometry";
 import { clamp, clamp01 } from "@/lib/spring";
 import type { Project } from "@/lib/projects";
 
@@ -52,7 +58,8 @@ export default function CaseDesktop({ project }: { project: Project }) {
   );
 
   const s = stage.s;
-  const baseline = stage.h * CASE.baseline;
+  const ts = stage.ts;
+  const baseline = caseBaseline(stage);
 
   const introOpacity = useTransform(cp, (v) => clamp01(1 - Math.abs(v) * 1.9));
   const introY = useTransform(cp, (v) => (reduced ? 0 : -v * 44));
@@ -107,10 +114,10 @@ export default function CaseDesktop({ project }: { project: Project }) {
             <motion.div
               style={{
                 position: "absolute",
-                left: 120,
-                top: 214 * s,
-                width: 500,
-                maxWidth: 470,
+                left: 120 * ts,
+                top: stageY(stage, 214),
+                width: 500 * ts,
+                maxWidth: 470 * ts,
                 zIndex: 54,
                 opacity: introOpacity,
                 y: introY,
@@ -121,7 +128,7 @@ export default function CaseDesktop({ project }: { project: Project }) {
                   margin: 0,
                   fontFamily: "var(--font-display)",
                   fontWeight: 400,
-                  fontSize: 56,
+                  fontSize: 56 * ts,
                   lineHeight: 1.02,
                   letterSpacing: "-0.04em",
                 }}
@@ -136,10 +143,10 @@ export default function CaseDesktop({ project }: { project: Project }) {
                 style={{
                   fontFamily: "var(--font-display)",
                   fontWeight: 400,
-                  fontSize: 18,
+                  fontSize: 18 * ts,
                   lineHeight: 1.55,
                   opacity: 0.66,
-                  paddingTop: 26,
+                  paddingTop: 26 * ts,
                   textWrap: "pretty",
                   whiteSpace: "pre-line",
                 }}
@@ -149,13 +156,13 @@ export default function CaseDesktop({ project }: { project: Project }) {
               <dl
                 style={{
                   display: "flex",
-                  gap: 32,
-                  margin: "34px 0 0",
-                  padding: "26px 0 0",
+                  gap: 32 * ts,
+                  margin: `${34 * ts}px 0 0`,
+                  padding: `${26 * ts}px 0 0`,
                   borderTop: "1px solid var(--hairline)",
                   fontFamily: "var(--font-mono)",
                   fontWeight: 400,
-                  fontSize: 9.5,
+                  fontSize: 9.5 * ts,
                   lineHeight: 1.8,
                   letterSpacing: "0.06em",
                 }}
@@ -166,7 +173,7 @@ export default function CaseDesktop({ project }: { project: Project }) {
                   <dt style={{ opacity: 0.42 }}>YEAR</dt>
                   <dd style={{ margin: 0 }}>{project.yearLong ?? project.year}</dd>
                 </div>
-                <div style={{ flex: "1 1 190px", minWidth: 0 }}>
+                <div style={{ flex: `1 1 ${190 * ts}px`, minWidth: 0 }}>
                   <dt style={{ opacity: 0.42 }}>COLLABORATORS</dt>
                   <dd style={{ margin: 0 }}>{project.collaborators}</dd>
                 </div>
@@ -211,7 +218,7 @@ export default function CaseDesktop({ project }: { project: Project }) {
                 left: 0,
                 right: 0,
                 top: baseline + 26 * s,
-                height: 56,
+                height: 56 * ts,
                 zIndex: 56,
                 textAlign: "center",
                 opacity: chromeOpacity,
@@ -238,7 +245,7 @@ export default function CaseDesktop({ project }: { project: Project }) {
                 href="/"
                 style={{
                   fontFamily: "var(--font-mono)",
-                  fontSize: 10,
+                  fontSize: 10 * ts,
                   letterSpacing: "0.14em",
                   opacity: 0.55,
                 }}
@@ -252,12 +259,12 @@ export default function CaseDesktop({ project }: { project: Project }) {
                 position: "absolute",
                 left: 0,
                 right: 0,
-                bottom: 46 * s,
+                bottom: stage.top + 46 * s,
                 zIndex: 70,
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                gap: 12,
+                gap: 12 * ts,
                 opacity: chromeOpacity,
               }}
             >
@@ -272,7 +279,7 @@ export default function CaseDesktop({ project }: { project: Project }) {
               <div
                 style={{
                   fontFamily: "var(--font-mono)",
-                  fontSize: 9,
+                  fontSize: 9 * ts,
                   letterSpacing: "0.12em",
                   opacity: 0.34,
                   fontVariantNumeric: "tabular-nums",
@@ -299,11 +306,12 @@ function ShotTitle({
   title: string;
   meta: string;
 }) {
-  const { cp } = useStage();
+  const { cp, stage } = useStage();
+  const ts = stage.ts;
   const opacity = useTransform(cp, (v) =>
     clamp01(1 - Math.abs(v - index) * 2.4),
   );
-  const y = useTransform(cp, (v) => (v - index) * 26);
+  const y = useTransform(cp, (v) => (v - index) * 26 * stage.s);
 
   return (
     <motion.div
@@ -313,7 +321,7 @@ function ShotTitle({
         style={{
           fontFamily: "var(--font-display)",
           fontWeight: 400,
-          fontSize: 26,
+          fontSize: 26 * ts,
           lineHeight: 1.14,
           letterSpacing: "-0.028em",
         }}
@@ -322,9 +330,9 @@ function ShotTitle({
       </div>
       <div
         style={{
-          paddingTop: 9,
+          paddingTop: 9 * ts,
           fontFamily: "var(--font-mono)",
-          fontSize: 9.5,
+          fontSize: 9.5 * ts,
           lineHeight: 1,
           letterSpacing: "0.11em",
           opacity: 0.4,

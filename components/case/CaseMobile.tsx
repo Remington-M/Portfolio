@@ -34,6 +34,7 @@ export default function CaseMobile({ project }: { project: Project }) {
   const pitch = railPitch(stage);
   const pad = railPadding(stage);
   const s = stage.s;
+  const ts = stage.ts;
   const w = CASE.mobile.w * s;
   const h = CASE.mobile.h * s;
 
@@ -105,7 +106,7 @@ export default function CaseMobile({ project }: { project: Project }) {
                 bottom: 18,
                 textAlign: "center",
                 fontFamily: "var(--font-mono)",
-                fontSize: 9.5,
+                fontSize: 9.5 * ts,
                 letterSpacing: "0.14em",
                 color: "oklch(0.98 0 0 / 0.24)",
               }}
@@ -133,7 +134,7 @@ export default function CaseMobile({ project }: { project: Project }) {
               transform: "translateY(-50%)",
               textAlign: "center",
               fontFamily: "var(--font-mono)",
-              fontSize: 9.5,
+              fontSize: 9.5 * ts,
               letterSpacing: "0.14em",
               color: "oklch(0.28 0.006 60 / 0.6)",
             }}
@@ -244,7 +245,8 @@ function RailTitle({
   title: string;
   meta: string;
 }) {
-  const { cp } = useStage();
+  const { cp, stage } = useStage();
+  const ts = stage.ts;
   const opacity = useTransform(cp, (v) =>
     clamp01(1 - Math.abs(v - index) * 2.4),
   );
@@ -258,7 +260,7 @@ function RailTitle({
         style={{
           fontFamily: "var(--font-display)",
           fontWeight: 400,
-          fontSize: 21,
+          fontSize: 21 * ts,
           lineHeight: 1.14,
           letterSpacing: "-0.026em",
         }}
@@ -269,7 +271,7 @@ function RailTitle({
         style={{
           paddingTop: 7,
           fontFamily: "var(--font-mono)",
-          fontSize: 9,
+          fontSize: 9 * ts,
           lineHeight: 1,
           letterSpacing: "0.11em",
           opacity: 0.4,

@@ -2,11 +2,13 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
+  type MutableRefObject,
   type ReactNode,
 } from "react";
 import { motionValue, type MotionValue } from "motion/react";
@@ -25,8 +27,20 @@ import { projectIndex } from "@/lib/projects";
  * cycle entirely, so scrolling never re-renders anything.
  */
 export type StageState = {
-  /** Home deck position. Fractional — the shuffle is continuous. */
+  /**
+   * Home deck position, as currently rendered. Fractional, because the shuffle
+   * is a continuous path — but it is no longer written by the scroll. The
+   * media layer animates it toward `pTarget`.
+   */
   p: MotionValue<number>;
+  /**
+   * The card the deck is committed to, always a whole number.
+   *
+   * Scroll and throws both resolve to this rather than driving the deck
+   * directly, which is what makes going to the back a single animation instead
+   * of something a slow scroll can leave parked half way through the arc.
+   */
+  pTarget: MotionValue<number>;
   /** Hero-to-deck intro progress, 0–1. */
   pi: MotionValue<number>;
   /** Project page shot position. */
@@ -50,6 +64,23 @@ export type StageState = {
    */
   restoreDeck: () => number | null;
   rememberDeck: (value: number) => void;
+
+  /**
+   * True while the media layer is driving the deck itself — a card is being
+   * dragged or is mid-fling.
+   *
+   * The deck's position normally comes from a scroll container, so a gesture
+   * and the scroller would otherwise fight: the gesture writes `p`, the next
+   * scroll event overwrites it, and the card snaps back. While this is set,
+   * Home stops writing `p` and lets the gesture own it; when the gesture ends
+   * the resulting position is committed back to the scroller so the two agree
+   * again and normal scrolling resumes from where the card landed.
+   */
+  deckDriven: MutableRefObject<boolean>;
+  /** Home registers a way to put its scroller at a given deck position. */
+  registerDeckScroll: (fn: ((value: number) => void) | null) => void;
+  /** Hand a gesture's final deck position back to the scroller. */
+  commitDeck: (value: number) => void;
 };
 
 const StageContext = createContext<StageState | null>(null);
@@ -64,6 +95,7 @@ export function StageProvider({ children }: { children: ReactNode }) {
   const values = useMemo(
     () => ({
       p: motionValue(0),
+      pTarget: motionValue(0),
       pi: motionValue(0),
       cp: motionValue(0),
       selected: motionValue(-1),
@@ -86,6 +118,20 @@ export function StageProvider({ children }: { children: ReactNode }) {
    * in-page return links do.
    */
   const deckMemo = useRef<number | null>(null);
+
+  const deckDriven = useRef(false);
+  const deckScroll = useRef<((value: number) => void) | null>(null);
+
+  const registerDeckScroll = useCallback(
+    (fn: ((value: number) => void) | null) => {
+      deckScroll.current = fn;
+    },
+    [],
+  );
+
+  const commitDeck = useCallback((value: number) => {
+    deckScroll.current?.(value);
+  }, []);
 
   // Keep the selected project in sync with the URL, so a deep link or a back
   // button lands with the right card as the shared element.
@@ -134,8 +180,19 @@ export function StageProvider({ children }: { children: ReactNode }) {
       rememberDeck: (value: number) => {
         deckMemo.current = value;
       },
+      deckDriven,
+      registerDeckScroll,
+      commitDeck,
     }),
-    [values, mode, viewport.mobile, stage, transitionKey],
+    [
+      values,
+      mode,
+      viewport.mobile,
+      stage,
+      transitionKey,
+      registerDeckScroll,
+      commitDeck,
+    ],
   );
 
   return (

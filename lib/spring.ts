@@ -14,9 +14,50 @@ export function spring(value = 0): Spring {
 
 export type SpringConfig = {
   stiffness: number;
+  /** Damping COEFFICIENT, which is what the integrator below actually wants. */
   damping: number;
   mass: number;
 };
+
+/**
+ * Springs in this project are authored as stiffness + damping RATIO, not as a
+ * raw damping coefficient.
+ *
+ * The ratio is the number with physical meaning: it says how the spring
+ * behaves regardless of how stiff it is. Below 1 it overshoots and rings, at 1
+ * it is critically damped — the fastest approach with no overshoot — and above
+ * it the spring is sluggish. A coefficient means none of that on its own,
+ * because the same number is bouncy on a soft spring and dead on a stiff one.
+ * Retuning stiffness with a fixed ratio keeps the character and changes only
+ * the speed, which is what makes these adjustable by feel.
+ *
+ *   c = 2 * zeta * sqrt(k * m)
+ */
+export function dampingFromRatio(
+  stiffness: number,
+  ratio: number,
+  mass = 1,
+): number {
+  return 2 * ratio * Math.sqrt(stiffness * mass);
+}
+
+/** Author a spring as stiffness + damping ratio. The house form. */
+export function springConfig(
+  stiffness: number,
+  ratio: number,
+  mass = 1,
+): SpringConfig {
+  return { stiffness, damping: dampingFromRatio(stiffness, ratio, mass), mass };
+}
+
+/** Recover the ratio from a coefficient, for reading legacy values. */
+export function ratioFromDamping(
+  stiffness: number,
+  damping: number,
+  mass = 1,
+): number {
+  return damping / (2 * Math.sqrt(stiffness * mass));
+}
 
 /** Substep so a long frame can't make the integration explode. */
 const MAX_STEP = 1 / 120;
@@ -47,6 +88,11 @@ export function stepSpring(
 export function snapSpring(s: Spring, target: number): void {
   s.value = target;
   s.velocity = 0;
+}
+
+/** Seed a spring's momentum — how a fling hands its speed to the physics. */
+export function kickSpring(s: Spring, velocity: number): void {
+  s.velocity = velocity;
 }
 
 export function isAtRest(s: Spring, target: number): boolean {

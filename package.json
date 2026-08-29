@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "verify": "node scripts/verify-continuity.mjs"
+    "verify": "node scripts/verify-continuity.mjs",
+    "verify:gesture": "node scripts/verify-gesture.mjs",
+    "verify:deck": "node scripts/verify-deck.mjs"
   },
   "dependencies": {
     "motion": "^13.1.1",

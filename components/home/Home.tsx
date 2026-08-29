@@ -13,9 +13,9 @@ import Header from "@/components/Header";
 import Ledger from "./Ledger";
 import Ticks from "@/components/Ticks";
 import { projects } from "@/lib/projects";
-import { DECK } from "@/lib/design";
+import { DECK, DECK_MOTION } from "@/lib/design";
 import { clamp01 } from "@/lib/spring";
-import { frontIndex } from "@/lib/geometry";
+import { frontIndex, stageY } from "@/lib/geometry";
 
 /**
  * The home screen.
@@ -29,7 +29,17 @@ import { frontIndex } from "@/lib/geometry";
  * they can survive the navigation into a project page.
  */
 export default function Home() {
-  const { p, pi, stage, mobile, restoreDeck, rememberDeck } = useStage();
+  const {
+    p,
+    pTarget,
+    pi,
+    stage,
+    mobile,
+    restoreDeck,
+    rememberDeck,
+    deckDriven,
+    registerDeckScroll,
+  } = useStage();
   const reduced = useReducedMotion() ?? false;
   const scrollRef = useRef<HTMLDivElement>(null);
   const [front, setFront] = useState(() => frontIndex(p.get(), projects.length));
@@ -37,17 +47,72 @@ export default function Home() {
   const cfg = mobile ? DECK.mobile : DECK.desktop;
   const n = projects.length;
 
-  // Max scrollTop works out to exactly `intro + n * step`, so the last card can
-  // complete its shuffle rather than stopping half way through the arc.
-  const scrollHeight = cfg.intro + n * cfg.step + stage.h;
+  // Max scrollTop works out to exactly `intro + hold + n * step`, so the last
+  // card can complete its shuffle rather than stopping half way through the arc.
+  const scrollHeight = cfg.intro + cfg.hold + n * cfg.step + stage.h;
+
+  /**
+   * Scroll position at which project `value` sits at rest.
+   *
+   * The first project rests in the MIDDLE of the dwell rather than at its end,
+   * so there is scroll room on both sides of it. Landing it at the end would
+   * keep the original problem: the card would arrive and start shuffling away
+   * on the very next pixel, which is what made it feel skipped.
+   */
+  const deckTop = useCallback(
+    (value: number) =>
+      value <= 0
+        ? cfg.intro + cfg.hold / 2
+        : cfg.intro + cfg.hold + value * cfg.step,
+    [cfg.intro, cfg.hold, cfg.step],
+  );
 
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
+    // A gesture owns the deck while it runs. Writing `p` from scroll here would
+    // fight the drag and snap the card back on the next scroll event.
+    if (deckDriven.current) return;
     const top = el.scrollTop;
-    p.set(Math.max(0, (top - cfg.intro) / cfg.step));
     pi.set(Math.min(1, top / cfg.intro));
-  }, [p, pi, cfg.intro, cfg.step]);
+
+    /**
+     * Scroll picks the card, it does not scrub the shuffle.
+     *
+     * The raw position is only consulted to decide whether we have gone far
+     * enough into the next card to commit to it; the move itself is then
+     * played out by a spring in the media layer. Scrubbing the arc directly
+     * meant a slow scroll could park a card half way round the stack and hold
+     * it there, which read as the animation stalling rather than as control.
+     *
+     * The threshold is applied against the card we are currently committed to
+     * rather than by rounding, so the deck does not flip back and forth while
+     * the pointer hovers on the boundary. The loop covers a fast scroll that
+     * crosses several cards inside one event.
+     */
+    // The deck does not start moving until the dwell is behind us.
+    const raw = Math.max(0, (top - cfg.intro - cfg.hold) / cfg.step);
+    let committed = pTarget.get();
+    while (raw >= committed + DECK_MOTION.commit && committed < n) committed += 1;
+    while (raw <= committed - DECK_MOTION.commit && committed > 0) committed -= 1;
+    pTarget.set(committed);
+  }, [pTarget, pi, n, cfg.intro, cfg.hold, cfg.step, deckDriven]);
+
+  /**
+   * Let a fling put the scroller where the card landed.
+   *
+   * Written directly rather than through `scrollTo`, and with the scroll
+   * handler already suppressed, so this repositions the scroller silently
+   * instead of kicking off a second animation that would fight the spring.
+   */
+  useEffect(() => {
+    registerDeckScroll((value: number) => {
+      const el = scrollRef.current;
+      if (!el) return;
+      el.scrollTop = deckTop(value);
+    });
+    return () => registerDeckScroll(null);
+  }, [registerDeckScroll, deckTop]);
 
   useMotionValueEvent(p, "change", (v) => {
     // Remember on every change rather than on click, so leaving by the browser
@@ -63,7 +128,8 @@ export default function Home() {
     const el = scrollRef.current;
     if (!el || stage.h === 0) return;
     const remembered = restoreDeck();
-    el.scrollTop = remembered === null ? 0 : cfg.intro + remembered * cfg.step;
+    if (remembered !== null) pTarget.set(Math.round(remembered));
+    el.scrollTop = remembered === null ? 0 : deckTop(remembered);
     onScroll();
     // Only on mount and when the stage is first measured.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -74,11 +140,11 @@ export default function Home() {
       const el = scrollRef.current;
       if (!el) return;
       el.scrollTo({
-        top: cfg.intro + i * cfg.step,
+        top: deckTop(i),
         behavior: reduced ? "auto" : "smooth",
       });
     },
-    [cfg.intro, cfg.step, reduced],
+    [deckTop, reduced],
   );
 
   // Hero drifts away as the deck arrives. Driven straight off the intro
@@ -89,6 +155,7 @@ export default function Home() {
   const chromeOpacity = useTransform(pi, (v) => clamp01((v - 0.45) * 2.2));
 
   const s = stage.s;
+  const ts = stage.ts;
 
   return (
     <div
@@ -130,7 +197,7 @@ export default function Home() {
                 position: "absolute",
                 left: mobile ? 24 : 0,
                 right: mobile ? 24 : 0,
-                top: (mobile ? 132 : 176) * s,
+                top: stageY(stage, mobile ? 132 : 176),
                 zIndex: 52,
                 display: "flex",
                 justifyContent: "center",
@@ -143,12 +210,12 @@ export default function Home() {
               <h1
                 style={{
                   margin: 0,
-                  maxWidth: mobile ? "none" : 760,
+                  maxWidth: mobile ? "none" : 760 * ts,
                   textAlign: "center",
                   fontFamily: "var(--font-display)",
                   fontWeight: 400,
-                  fontSize: mobile ? 26 : 42,
-                  lineHeight: mobile ? 1.28 : "50.81px",
+                  fontSize: (mobile ? 26 : 42) * ts,
+                  lineHeight: mobile ? 1.28 : `${50.81 * ts}px`,
                   letterSpacing: mobile ? "-0.026em" : "-0.03em",
                   textWrap: "pretty",
                 }}
@@ -164,7 +231,7 @@ export default function Home() {
                   position: "absolute",
                   left: 24,
                   right: 24,
-                  bottom: 36 * s,
+                  bottom: stage.top + 36 * s,
                   zIndex: 56,
                   display: "flex",
                   flexDirection: "column",
@@ -178,7 +245,7 @@ export default function Home() {
                   style={{
                     fontFamily: "var(--font-display)",
                     fontWeight: 400,
-                    fontSize: 22,
+                    fontSize: 22 * ts,
                     lineHeight: 1.14,
                     letterSpacing: "-0.026em",
                   }}
@@ -188,7 +255,7 @@ export default function Home() {
                 <div
                   style={{
                     fontFamily: "var(--font-mono)",
-                    fontSize: 9.5,
+                    fontSize: 9.5 * ts,
                     lineHeight: 1,
                     letterSpacing: "0.11em",
                     opacity: 0.42,
@@ -209,7 +276,7 @@ export default function Home() {
               <motion.div
                 style={{
                   position: "absolute",
-                  left: 120,
+                  left: 120 * ts,
                   top: "50%",
                   y: "-50%",
                   zIndex: 56,
@@ -236,7 +303,7 @@ export default function Home() {
                 left: 0,
                 width: 1,
                 height: 1,
-                top: i === 0 ? 0 : cfg.intro + (i - 1) * cfg.step,
+                top: i === 0 ? 0 : deckTop(i - 1),
                 scrollSnapAlign: "start",
               }}
             />

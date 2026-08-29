@@ -2,6 +2,7 @@
 
 import { HOUSE_CSS } from "@/lib/design";
 import { projects } from "@/lib/projects";
+import { useStage } from "@/components/media/stage";
 
 /**
  * Desktop ledger. The cards carry no titles — this names the project.
@@ -17,13 +18,14 @@ export default function Ledger({
   front: number;
   onJump: (index: number) => void;
 }) {
+  const ts = useStage().stage.ts;
   return (
     <ol
       style={{
         listStyle: "none",
         margin: 0,
         padding: 0,
-        width: 460,
+        width: 460 * ts,
       }}
     >
       {projects.map((project, i) => {
@@ -37,10 +39,10 @@ export default function Ledger({
               style={{
                 display: "grid",
                 gridTemplateColumns: "1fr auto",
-                gap: 24,
+                gap: 24 * ts,
                 alignItems: "center",
                 width: "100%",
-                padding: "12px 0",
+                padding: `${12 * ts}px 0`,
                 border: 0,
                 background: "none",
                 color: "inherit",
@@ -53,7 +55,7 @@ export default function Ledger({
                 style={{
                   fontFamily: "var(--font-display)",
                   fontWeight: 400,
-                  fontSize: on ? 28 : 20,
+                  fontSize: (on ? 28 : 20) * ts,
                   lineHeight: 1.1,
                   letterSpacing: on ? "-0.032em" : "-0.024em",
                   opacity: on ? 1 : 0.36,
@@ -66,7 +68,7 @@ export default function Ledger({
                 style={{
                   fontFamily: "var(--font-mono)",
                   fontWeight: 400,
-                  fontSize: 9.5,
+                  fontSize: 9.5 * ts,
                   lineHeight: 1,
                   fontVariantNumeric: "tabular-nums",
                   letterSpacing: "0.09em",
