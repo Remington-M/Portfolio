@@ -26,6 +26,12 @@ export type Geo = {
   rotateY: number;
   scale: number;
   opacity: number;
+  /**
+   * Wash of page colour laid over the card, 0 to 1. This is how depth is
+   * shown — a veil ON the card rather than transparency THROUGH it, so a card
+   * further back never lets the one beneath it show.
+   */
+  scrim: number;
   z: number;
 };
 
@@ -206,6 +212,21 @@ export function deckCard(
    * across the deck to exit the far side reads as the throw being ignored.
    */
   dir: 1 | -1 = 1,
+  /**
+   * How far through its own departure the card is, 0 at the front of the deck
+   * and 1 at the back. Supplied by the layer, which runs a clock per card.
+   *
+   * When it is given, it replaces the position the deck would otherwise imply
+   * — that is the whole point. Deriving the swing from deck position meant a
+   * fast move squashed it flat; on its own clock the card always travels the
+   * full arc.
+   */
+  clock?: number,
+  /**
+   * Multiplier on this card's swing. 1 when it is travelling alone; wider when
+   * it is sharing the air with others and has to get around them too.
+   */
+  arcScale = 1,
 ): Geo {
   const cfg = stage.mobile ? DECK.mobile : DECK.desktop;
   const size = deckCardSize(stage);
@@ -246,6 +267,13 @@ export function deckCard(
     return { depth: cfg.pull * pulse * reach, rot: cfg.pullRot * pulse * reach };
   };
 
+  /**
+   * Opacity of a card resting `d` places back. Flat across the front of the
+   * stack, then falling away behind it.
+   */
+  const restScrim = (d: number) =>
+    Math.min(cfg.maxScrim, Math.max(0, d - cfg.opaqueDepth) * cfg.dScrim);
+
   /** Resting position for a card `d` places back in the stack. */
   const rest = (d: number) => ({
     x: d * cfg.dx * k + jx * 0.4 * Math.min(1, d),
@@ -256,20 +284,32 @@ export function deckCard(
 
   let x: number, y: number, scale: number, rotate: number;
   let rotateY = 0;
-  let opacity: number, z: number;
+  let scrim: number, z: number;
 
-  if (depth >= deepest) {
-    // Mid-shuffle: out to the right, over the top, down to the back.
-    const t = 1 - (depth - deepest);
+  const departing = clock !== undefined || depth >= deepest;
+
+  if (departing) {
+    // Mid-shuffle: out to the side, over the top, down to the back.
+    const t = clock !== undefined ? clock : 1 - (depth - deepest);
     const ease = smoothstep(t);
     const arc = Math.sin(t * Math.PI);
     const deep = rest(deepest);
-    x = deep.x * ease + arc * size.width * cfg.arcXWidths * dir;
+    x = deep.x * ease + arc * size.width * cfg.arcXWidths * arcScale * dir;
     y = deep.y * ease + arc * cfg.arcY * k;
     scale = 1 + (deep.scale - 1) * ease;
     rotate = reduced ? 0 : deep.rotate * ease + arc * cfg.arcRot * dir;
     rotateY = reduced ? 0 : arc * cfg.arcRotY * dir;
-    opacity = 1 - 0.78 * ease;
+    /**
+     * Held fully opaque while the card is still passing in FRONT of the stack,
+     * then faded over the tail of the arc as it tucks in behind.
+     *
+     * Fading from the start meant a half-transparent card lying over the deck
+     * for the whole outward half of the trip, which reads as a rendering fault
+     * rather than as depth. Lands exactly on the resting opacity of the
+     * deepest slot, so there is no step when the shuffle ends.
+     */
+    const fade = clamp01((t - cfg.fadeStart) / (1 - cfg.fadeStart));
+    scrim = lerp(0, restScrim(deepest), smoothstep(fade));
     z = t < 0.5 ? 60 : 50 - deepest;
   } else {
     const pull = pullAt(depth);
@@ -290,7 +330,7 @@ export function deckCard(
      * arrives upright rather than snapping straight.
      */
     rotate = (g.rotate + pull.rot + introLean) * Math.min(1, depth);
-    opacity = Math.max(0.24, 1 - depth * cfg.dOpacity);
+    scrim = restScrim(depth);
     z = 50 - depth;
   }
 
@@ -309,7 +349,9 @@ export function deckCard(
     rotate,
     rotateY,
     scale,
-    opacity: Math.max(0, opacity),
+    // Deck cards are never transparent; depth is the wash above.
+    opacity: 1,
+    scrim: clamp01(scrim),
     z: Math.round(z),
   };
 }
@@ -397,6 +439,7 @@ export function caseFrame(
     rotateY: 0,
     scale: 1,
     opacity: 1,
+    scrim: 0,
     z: 52,
   };
 }
@@ -478,7 +521,9 @@ export function railCard(
       : (signed > 0 ? 1 : -1) * Math.min(1, Math.abs(signed)) * 1,
     rotateY: 0,
     scale: reduced ? 1 : 1 - near * 0.035,
-    opacity: 1 - near * 0.24,
+    // Same rule as the deck: veiled, never see-through.
+    opacity: 1,
+    scrim: reduced ? 0 : near * 0.3,
     z: 52,
   };
 }

@@ -39,17 +39,36 @@ export default function Home() {
     rememberDeck,
     deckDriven,
     registerDeckScroll,
+    rebaseDeck,
   } = useStage();
   const reduced = useReducedMotion() ?? false;
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * One continuous scroll, inferred from the gaps between its events, and how
+   * many cards it has turned through so far.
+   */
+  const lastScrollAt = useRef(0);
+  const turnedThisScroll = useRef(0);
   const [front, setFront] = useState(() => frontIndex(p.get(), projects.length));
 
   const cfg = mobile ? DECK.mobile : DECK.desktop;
   const n = projects.length;
 
-  // Max scrollTop works out to exactly `intro + hold + n * step`, so the last
-  // card can complete its shuffle rather than stopping half way through the arc.
-  const scrollHeight = cfg.intro + cfg.hold + n * cfg.step + stage.h;
+  /** Scroll distance for one full turn of the deck. */
+  const lap = n * cfg.step;
+
+  /**
+   * Two laps of scroll, not one.
+   *
+   * The deck runs for ever, and it does that by quietly rewinding: once a full
+   * turn has been scrolled the scroller is pulled back a lap and the animation
+   * is rewound with it. Because depth is measured around a ring, the position
+   * before and after that rewind paint identically, so nothing moves. Holding
+   * two laps of room means there is always a lap of scroll left ahead of the
+   * rewind point, so the wheel never runs into the end of the page.
+   */
+  const scrollHeight = cfg.intro + cfg.hold + 2 * lap + stage.h;
 
   /**
    * Scroll position at which project `value` sits at rest.
@@ -73,30 +92,89 @@ export default function Home() {
     // A gesture owns the deck while it runs. Writing `p` from scroll here would
     // fight the drag and snap the card back on the next scroll event.
     if (deckDriven.current) return;
+
     const top = el.scrollTop;
     pi.set(Math.min(1, top / cfg.intro));
 
     /**
-     * Scroll picks the card, it does not scrub the shuffle.
-     *
-     * The raw position is only consulted to decide whether we have gone far
-     * enough into the next card to commit to it; the move itself is then
-     * played out by a spring in the media layer. Scrubbing the arc directly
-     * meant a slow scroll could park a card half way round the stack and hold
-     * it there, which read as the animation stalling rather than as control.
-     *
-     * The threshold is applied against the card we are currently committed to
-     * rather than by rounding, so the deck does not flip back and forth while
-     * the pointer hovers on the boundary. The loop covers a fast scroll that
-     * crosses several cards inside one event.
+     * A gesture is a run of scroll events with no real gap in it — one flick
+     * and its coasting. A quiet moment starts a fresh one, and with it a fresh
+     * allowance.
      */
-    // The deck does not start moving until the dwell is behind us.
+    const now = performance.now();
+    if (now - lastScrollAt.current > DECK_MOTION.gestureGap)
+      turnedThisScroll.current = 0;
+    lastScrollAt.current = now;
+
+    /**
+     * Scroll picks the card, it does not scrub the shuffle. The raw position
+     * is only consulted to decide whether we have gone far enough into the
+     * next card to commit to it; the move itself is then played out by a
+     * spring in the media layer. The threshold is measured against the card we
+     * are committed to rather than by rounding, so the deck does not flip back
+     * and forth on the boundary, and the loop covers a fast scroll crossing
+     * several cards inside one event.
+     */
     const raw = Math.max(0, (top - cfg.intro - cfg.hold) / cfg.step);
-    let committed = pTarget.get();
+    const before = pTarget.get();
+    let committed = before;
     while (raw >= committed + DECK_MOTION.commit && committed < n) committed += 1;
     while (raw <= committed - DECK_MOTION.commit && committed > 0) committed -= 1;
+
+    /**
+     * One scroll turns through a limited number of cards. Without this a hard
+     * flick carries the deck round the whole list and out the other side, and
+     * it reads as a slot machine rather than as a deck being looked through.
+     */
+    const wanted = Math.abs(committed - before);
+    if (wanted > 0) {
+      const left = Math.max(
+        0,
+        DECK_MOTION.maxPerGesture - turnedThisScroll.current,
+      );
+      if (wanted > left)
+        committed = before + Math.sign(committed - before) * left;
+      turnedThisScroll.current += Math.abs(committed - before);
+    }
+
+    /**
+     * A full turn behind us: rewind a lap so scrolling can carry on for ever.
+     *
+     * The committed card is rewound along with the scroller and the animation.
+     * Rewinding only the other two used to leave this one a whole lap ahead,
+     * and the next scroll event then read that gap as six cards of travel in
+     * the opposite direction — which both jerked the deck and spent an
+     * allowance that had not been used, letting a gesture run past its limit.
+     */
+    if (committed >= n) {
+      committed -= n;
+      el.scrollTop -= lap;
+      rebaseDeck(1);
+    }
+
+    /**
+     * Out of allowance: hold the scroller on the card the deck stopped at,
+     * which absorbs the rest of the momentum. Letting it coast on would leave
+     * the scroll position pointing at a card the deck never reached.
+     */
+    if (turnedThisScroll.current >= DECK_MOTION.maxPerGesture) {
+      const pin = deckTop(committed);
+      if (Math.abs(el.scrollTop - pin) > 1) el.scrollTop = pin;
+    }
+
     pTarget.set(committed);
-  }, [pTarget, pi, n, cfg.intro, cfg.hold, cfg.step, deckDriven]);
+  }, [
+    pTarget,
+    pi,
+    n,
+    lap,
+    cfg.intro,
+    cfg.hold,
+    cfg.step,
+    deckDriven,
+    rebaseDeck,
+    deckTop,
+  ]);
 
   /**
    * Let a fling put the scroller where the card landed.
@@ -139,12 +217,41 @@ export default function Home() {
     (i: number) => {
       const el = scrollRef.current;
       if (!el) return;
-      el.scrollTo({
-        top: deckTop(i),
-        behavior: reduced ? "auto" : "smooth",
-      });
+      /**
+       * The deck is a ring, so there are two ways to reach any project and
+       * this picks the shorter one.
+       *
+       * A short hop back just reverses — for a card or two that reads as
+       * undoing the last move. Anything further carries on FORWARDS instead
+       * and wraps around, which is the motion the deck is built around: cards
+       * leaving the front and slotting in behind. Running that in reverse
+       * three or four times over is what made a jump back across the deck look
+       * busy.
+       */
+      const current = Math.round(pTarget.get());
+      const back = (((current - i) % n) + n) % n;
+      const forward = (((i - current) % n) + n) % n;
+      if (back === 0) return;
+
+      if (back <= DECK_MOTION.reverseMax) {
+        el.scrollTo({
+          top: deckTop(i),
+          behavior: reduced ? "auto" : "smooth",
+        });
+        return;
+      }
+
+      /**
+       * Going the long way round means the deck position runs past the end of
+       * its range, so the scroller cannot carry it — the media layer drives it
+       * and rebases once it arrives. A position and that position plus a full
+       * lap are identical on screen, since depth is measured around the ring,
+       * so the rebase is invisible.
+       */
+      deckDriven.current = true;
+      pTarget.set(current + forward);
     },
-    [deckTop, reduced],
+    [deckTop, reduced, pTarget, deckDriven, n],
   );
 
   // Hero drifts away as the deck arrives. Driven straight off the intro
@@ -276,7 +383,9 @@ export default function Home() {
               <motion.div
                 style={{
                   position: "absolute",
-                  left: 120 * ts,
+                  // Tucked further out than the authored 120 so the ledger and
+                  // the deck stop crowding each other.
+                  left: 76 * ts,
                   top: "50%",
                   y: "-50%",
                   zIndex: 56,
@@ -295,7 +404,7 @@ export default function Home() {
           shrunk to fit the wrapper, which silently moves every snap point.
         */}
         <div aria-hidden style={{ pointerEvents: "none" }}>
-          {Array.from({ length: n + 1 }, (_, i) => (
+          {Array.from({ length: 2 * n + 1 }, (_, i) => (
             <div
               key={i}
               style={{

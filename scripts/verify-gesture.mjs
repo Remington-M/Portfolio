@@ -187,6 +187,7 @@ for (const [label, sign] of [["left", -1], ["right", 1]]) {
       const f = (now) => {
         out.push({
           t: now - t0,
+          released: !!window.__released,
           x: cards.map((el) => el.getBoundingClientRect().left),
         });
         if (now - t0 < 3000) requestAnimationFrame(f);
@@ -202,6 +203,12 @@ for (const [label, sign] of [["left", -1], ["right", 1]]) {
     await page.mouse.move(c.x + sign * k * 24, c.y);
     await page.waitForTimeout(10);
   }
+  // Mark the exact frame the pointer came up rather than guessing from how far
+  // the card had moved: a synthetic drag's first step is abrupt, and that was
+  // being mistaken for the release.
+  await page.evaluate(() => {
+    window.__released = true;
+  });
   await page.mouse.up();
   const frames = await watch;
   await page.close();
@@ -227,22 +234,75 @@ for (const [label, sign] of [["left", -1], ["right", 1]]) {
   else note(`${label} throw travels ${label} (peak ${peak.toFixed(0)}px)`);
 
   /**
-   * Reversal check, over the release and settle. The card should keep going
-   * the way it was thrown until it turns to tuck in behind — one turn is the
-   * arc, but a turn back the way it came within a few frames of the release
-   * is the hitch.
+   * Hitch check: a JUMP in position across the release, not a change of
+   * direction.
+   *
+   * Direction is the wrong test. The card follows an arc, so a throw released
+   * past the top of that arc correctly starts curving back toward the stack —
+   * flagging that as a hitch fails a card that is behaving properly. What a
+   * hitch actually looks like is the card leaping somewhere in a single frame
+   * because its target moved out from under it, so this compares the frames
+   * just after the release against how fast it was already travelling.
    */
-  const release = frames.findIndex((f) => Math.abs(f.x[card] - start[card]) > 20);
-  let backtrack = 0;
-  for (let i = release + 1; i < Math.min(frames.length, release + 14); i++) {
-    const step = track[i] - track[i - 1];
-    if (Math.sign(step) === -sign) backtrack += Math.abs(step);
-  }
-  if (backtrack > 24)
+  const release = Math.max(1, frames.findIndex((f) => f.released));
+  const steps = [];
+  for (let i = 1; i < track.length; i++) steps.push(Math.abs(track[i] - track[i - 1]));
+  const during = steps.slice(0, release).filter((s) => s > 0.5).sort((a, b) => a - b);
+  const typical = during.length ? during[Math.floor(during.length / 2)] : 1;
+  const after = steps.slice(release, release + 8);
+  const jump = after.length ? Math.max(...after) : 0;
+
+  if (jump > typical * 3 + 12)
     failures.push(
-      `${label} throw hitched — card moved ${backtrack.toFixed(0)}px backwards just after release`,
+      `${label} throw hitched — jumped ${jump.toFixed(0)}px in one frame after release (was moving ~${typical.toFixed(0)}px/frame)`,
     );
-  else note(`  no hitch on release (${backtrack.toFixed(0)}px of backtrack)`);
+  else
+    note(
+      `  release is continuous (max ${jump.toFixed(0)}px/frame vs ~${typical.toFixed(0)} during the drag)`,
+    );
+}
+
+/* -------------------------------------------------------------- *
+ * 6. A SLOW drag must not strand the card.
+ *
+ *    The drag drives the deck, so the front card changes part way through
+ *    one — and the pointer handlers used to live on whichever card was
+ *    front. Half way through a slow drag they moved to a different card,
+ *    the pointerup never arrived, and the card in hand was left hanging
+ *    out to the side with the gesture still live.
+ * -------------------------------------------------------------- */
+for (const [label, sign] of [["slow left", -1], ["slow right", 1]]) {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const c = await openDeck(page);
+  await page.mouse.move(c.x, c.y);
+  await page.mouse.down();
+  // Deliberately slow and far: past the commit distance, under the fling speed.
+  for (let k = 1; k <= 20; k++) {
+    await page.mouse.move(c.x + sign * k * 22, c.y);
+    await page.waitForTimeout(45);
+  }
+  await page.mouse.up();
+  await page.waitForTimeout(2800);
+
+  const after = await page.evaluate(() => {
+    const layer = [...document.querySelectorAll("div")].find((d) => {
+      const cs = getComputedStyle(d);
+      return cs.position === "fixed" && cs.zIndex === "40";
+    });
+    const lefts = [...layer.firstElementChild.children].map(
+      (el) => el.getBoundingClientRect().left,
+    );
+    return { spread: Math.max(...lefts) - Math.min(...lefts) };
+  });
+  await page.close();
+
+  // Everything should have come back into a stack. A stranded card leaves one
+  // sitting hundreds of pixels away from the rest.
+  if (after.spread > 420)
+    failures.push(
+      `${label} drag stranded a card — stack spread ${after.spread.toFixed(0)}px after release`,
+    );
+  else note(`${label} drag settles back into a stack (spread ${after.spread.toFixed(0)}px)`);
 }
 
 await browser.close();

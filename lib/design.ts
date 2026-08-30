@@ -98,6 +98,20 @@ export const SPRING = {
    */
   deck: springConfig(80, 0.6),
   /**
+   * The departing card's own clock, driving it through a full arc.
+   *
+   * The swing used to be a function of how far the DECK had moved, so moving
+   * the deck quickly compressed the arc: the card never reached full extent,
+   * never got out past the stack, and cut the corner straight through it. A
+   * card leaving the deck now runs its own timeline at its own pace, so the
+   * trip out and back is the same shape whether it was nudged or thrown.
+   *
+   * Critically damped on purpose. Any overshoot would carry the clock past the
+   * end of the arc, and the arc is a sine — past the end it turns negative and
+   * the card swings back out the wrong side.
+   */
+  arcClock: springConfig(95, 1),
+  /**
    * Deck position travelling from one card to the next.
    *
    * This is the whole move, start to finish. Crossing the threshold commits to
@@ -108,7 +122,7 @@ export const SPRING = {
    * Half the speed of the deck spring, exactly: frequency goes as the square
    * root of stiffness, so a quarter of the stiffness is half the speed.
    */
-  travel: springConfig(20, 0.9),
+  travel: springConfig(32, 0.9),
   /**
    * The card on its way to the back, and sitting there once it arrives.
    *
@@ -166,14 +180,40 @@ export const DECK = {
     /** Authored card is 322x700 at the 1440x900 reference. */
     cardHeight: 700,
     cardHeightMin: 470,
-    /** Deck origin travels as the hero leaves: 720 -> 985 x, 770 -> 495 y. */
-    cx: [720 / 1440, 985 / 1440] as const,
+    /**
+     * Deck origin travels as the hero leaves: centred, then out to the right.
+     *
+     * Pushed further right than the authored 985 to open up the gap between
+     * the ledger and the stack — the two were crowding each other, and cards
+     * now swing to the left as well as the right, so the deck needs air on
+     * both sides rather than just one.
+     */
+    cx: [720 / 1440, 1046 / 1440] as const,
     cy: [770 / 900, 495 / 900] as const,
     /** Depth-stack offsets per card behind the front one. */
     dx: 9,
     dy: -15,
     dScale: 0.028,
-    dOpacity: 0.11,
+    /**
+     * Depth is painted, not faded.
+     *
+     * No card on the deck is ever transparent. Cards further back are veiled
+     * with a wash of the page colour instead, which sits ON them rather than
+     * letting the card beneath show through. Transparency was reading as a
+     * rendering fault — a half-visible card lying over the deck — and it also
+     * made the departing card vanish at the very moment it was supposed to be
+     * seen sliding in behind the others.
+     */
+    opaqueDepth: 2,
+    /** Wash added per depth step beyond the clear range. */
+    dScrim: 0.26,
+    /** Cap, so the back of the stack recedes without washing out completely. */
+    maxScrim: 0.55,
+    /**
+     * Where in its trip to the back the departing card starts to take the
+     * wash. It stays clear while it is still passing in front of the stack.
+     */
+    fadeStart: 0.55,
     /** Seeded jitter amplitudes: x px, y px, rotation deg. */
     jitter: [30, 16, 7] as const,
     /** The signature shuffle: out to the right, rotating in Y, then to the back. */
@@ -188,7 +228,7 @@ export const DECK = {
      * Past 1.0 the card is clear of its own footprint at the peak of the arc,
      * which is where the flip happens.
      */
-    arcXWidths: 1.66,
+    arcXWidths: 1.48,
     arcY: -40,
     arcRot: 7,
     arcRotY: -18,
@@ -242,7 +282,10 @@ export const DECK = {
     dx: 5,
     dy: -8,
     dScale: 0.026,
-    dOpacity: 0.12,
+    opaqueDepth: 2,
+    dScrim: 0.26,
+    maxScrim: 0.55,
+    fadeStart: 0.55,
     jitter: [13, 7, 4.2] as const,
     arcXWidths: 1.66,
     arcY: -26,
@@ -316,6 +359,74 @@ export const DECK_MOTION = {
    * parked half way; short of it the deck returns to where it was.
    */
   commit: 0.3,
+  /**
+   * How much wider each card's arc gets than the one behind it, when several
+   * are travelling at once.
+   *
+   * With every card going round the same side they share a path, so fanning
+   * them by where they are headed is what keeps them off each other. Kept
+   * modest: at 0.38 the lead card's swing read as too big on its own.
+   */
+  arcSpread: 0.22,
+  /**
+   * How far back the deck will actually reverse before it goes the other way
+   * round instead.
+   *
+   * The deck is a ring, so returning to an earlier project is never further
+   * than half a lap either way — from the fourth card the first is three back
+   * or three forward, and from the fifth it is four back but only two forward.
+   * Going forward is also the motion the deck is built around: cards leaving
+   * the front and slotting in behind. Reversing more than a couple of cards
+   * means running that backwards several times over, which is where it gets
+   * busy. Short hops back still reverse, because for one card that reads as
+   * undoing rather than as travelling.
+   *
+   * Scrolling is exempt: there the scroll position IS the deck position, and
+   * making the deck run forward while the wheel goes backward would be a lie.
+   */
+  reverseMax: 2,
+  /**
+   * The most cards one continuous scroll is allowed to turn through.
+   *
+   * Deliberately small. The deck loops, so an unlimited flick spins it through
+   * the whole list and out the other side like a slot machine — and there is
+   * nothing to be gained from that: nobody reads six projects going past at
+   * speed. Two cards a gesture keeps the deck something you step through
+   * rather than something you can send spinning, and moving further stays
+   * possible, it just has to be asked for again.
+   */
+  maxPerGesture: 2,
+  /**
+   * Quiet time that ends one scroll and begins the next, in milliseconds.
+   *
+   * A wheel or trackpad sends a stream of small events, so a gesture has to be
+   * inferred from the gaps between them. Long enough to hold a flick and its
+   * coasting together as one movement; short enough that deliberately
+   * scrolling again is immediately allowed to keep going.
+   */
+  gestureGap: 180,
+  /**
+   * When several cards are travelling at once, send them round alternate
+   * sides of the stack rather than all the same way.
+   *
+   * A group all sweeping right traces one path and piles up; splitting them
+   * left and right halves the traffic on each side and reads as a deck being
+   * riffled rather than a queue being processed. A card travelling alone is
+   * unaffected — it goes the way it was sent.
+   */
+  alternateSides: false,
+  /**
+   * Ceiling on how fast the deck travels, in cards per second.
+   *
+   * A safety bound, not a correctness one. It used to be set low enough to
+   * force a multi-card jump through every card in turn, because the departing
+   * card was a spring chasing its arc and at speed it never got far enough out
+   * to clear the stack. That lag is gone — the card in transit now follows its
+   * arc exactly — so the deck is free to move at the speed its own spring
+   * wants, and a jump across four cards takes about as long as a jump across
+   * one, which is the nature of a spring.
+   */
+  maxRate: 10,
   /**
    * Extra clearance, as a fraction of card width, that a departing card must
    * have beyond the stack's edge before it is allowed to drop behind it.

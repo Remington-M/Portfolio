@@ -90,6 +90,21 @@ export function snapSpring(s: Spring, target: number): void {
   s.velocity = 0;
 }
 
+/**
+ * Follow a target exactly, while keeping track of how fast it is moving.
+ *
+ * For values driven straight off an authored path rather than by physics. It
+ * differs from `snapSpring` in the one way that matters at a handover: the
+ * spring comes away carrying the speed the path had. Snapping zeroes the
+ * velocity, so the instant a spring takes back over it starts from a standstill
+ * and the motion visibly stalls — at the end of a shuffle, right as the card is
+ * tucking in.
+ */
+export function trackSpring(s: Spring, target: number, dt: number): void {
+  s.velocity = dt > 0 ? (target - s.value) / dt : 0;
+  s.value = target;
+}
+
 /** Seed a spring's momentum — how a fling hands its speed to the physics. */
 export function kickSpring(s: Spring, velocity: number): void {
   s.velocity = velocity;

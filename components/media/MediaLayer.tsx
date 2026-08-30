@@ -104,6 +104,7 @@ type CardSprings = {
   rotateY: Spring;
   scale: Spring;
   opacity: Spring;
+  scrim: Spring;
 };
 
 type CardValues = {
@@ -118,6 +119,7 @@ type CardValues = {
   rotateY: MotionValue<number>;
   scale: MotionValue<number>;
   opacity: MotionValue<number>;
+  scrim: MotionValue<number>;
   z: MotionValue<number>;
 };
 
@@ -133,6 +135,7 @@ const FIELDS = [
   "rotateY",
   "scale",
   "opacity",
+  "scrim",
 ] as const;
 
 /**
@@ -186,6 +189,7 @@ function makeSprings(): CardSprings {
     rotateY: spring(),
     scale: spring(1),
     opacity: spring(0),
+    scrim: spring(0),
   };
 }
 
@@ -202,6 +206,7 @@ function makeValues(): CardValues {
     rotateY: motionValue(0),
     scale: motionValue(1),
     opacity: motionValue(0),
+    scrim: motionValue(0),
     z: motionValue(0),
   };
 }
@@ -216,6 +221,7 @@ function dropped(geo: Geo, i: number, reduced: boolean): Geo {
     ...geo,
     y: geo.y + (reduced ? 0 : 300 + i * 26),
     rotate: reduced ? 0 : geo.rotate + (i % 2 ? 9 : -9),
+    // Leaving the page is the one place a card really does fade out.
     opacity: 0,
   };
 }
@@ -232,6 +238,7 @@ export default function MediaLayer() {
     transitionKey,
     deckDriven,
     commitDeck,
+    registerRebase,
   } = useStage();
   const reduced = useReducedMotion() ?? false;
 
@@ -291,9 +298,26 @@ export default function MediaLayer() {
    */
   const behind = useRef(projects.map(() => false));
 
+  /**
+   * Each card's own departure clock: 0 at the front of the deck, 1 at the
+   * back, and its own spring driving it between the two.
+   *
+   * A card leaving the deck plays the whole arc on this rather than on how far
+   * the deck has moved. Tied to the deck, a quick move squashed the swing flat
+   * — the card never reached full extent, never got out past the others, and
+   * cut through them instead of round them. Off its own clock the trip is the
+   * same shape every time, and several cards can be part way through their own
+   * at once without interfering.
+   */
+  const arcClock = useRef(projects.map(() => spring(0)));
+  /** Whether that clock is running — latched, so it always finishes. */
+  const arcOn = useRef(projects.map(() => false));
+
   /** Where the current move started, so the overshoot can be clamped to it. */
   const travelFrom = useRef(0);
   const lastGoal = useRef(0);
+  /** Which way the deck is going overall on the current move: 1 or -1. */
+  const travelDir = useRef(1);
   /** Which side of the stack the current departure travels around. */
   const arcDir = useRef<1 | -1>(1);
   /**
@@ -324,6 +348,14 @@ export default function MediaLayer() {
   const scratch = useRef({
     targetX: new Float64Array(projects.length),
     dragging: new Array<boolean>(projects.length).fill(false),
+    /** The card's own arc position, or -1 when it is not departing. */
+    clock: new Float64Array(projects.length).fill(-1),
+    /** Depth each card is headed for, which orders the ones in the air. */
+    dest: new Float64Array(projects.length),
+    /** How wide each card's swing is relative to travelling alone. */
+    arcScale: new Float64Array(projects.length).fill(1),
+    /** Which side of the stack each card is going round this frame. */
+    side: new Float64Array(projects.length).fill(1),
   });
   const deckSpring = useRef(spring(0));
 
@@ -333,6 +365,7 @@ export default function MediaLayer() {
     g.grabbed = true;
     g.suppressClick = true;
     g.grabP = pTarget.get();
+    setDragIndex(g.index);
     /**
      * Capture is taken here rather than on pointerdown.
      *
@@ -426,6 +459,7 @@ export default function MediaLayer() {
         }
       }
       g.el = null;
+      setDragIndex(-1);
       g.index = -1;
       g.pointerId = -1;
       g.grabbed = false;
@@ -470,15 +504,17 @@ export default function MediaLayer() {
       // Convert the throw into deck units against the same distance the
       // shuffle itself swings through, so a fling reads as the motion the
       // scroll already produces rather than an unrelated animation.
-      const throwPx = Math.max(1, deckThrow(stage));
       /**
-       * The deck is already part-way through the move — the drag drove it
-       * there — so nothing is repositioned here. The spring picks up from the
-       * current value with the speed the throw had, which is what makes the
-       * release continuous rather than the start of a fresh animation.
+       * Nothing about the deck is touched here except its destination.
+       *
+       * The drag has already been driving the deck, so its spring is carrying
+       * the throw's momentum — it IS the throw. Overwriting the velocity with
+       * the raw pointer speed on top of that double-counted it and jerked the
+       * card forward by five frames' worth of travel in one frame. The
+       * pointer speed still decides WHETHER this is a throw, above; it just
+       * has no business restating how fast the card is already going.
        */
       travelFrom.current = deckSpring.current.value;
-      deckSpring.current.velocity = Math.abs(vx) / throwPx;
       arcLocked.current = true;
       pTarget.set(target);
       /**
@@ -492,6 +528,23 @@ export default function MediaLayer() {
     },
     [pTarget, stage, deckDriven, commitDeck],
   );
+
+  /**
+   * Rewind the animation's own state by whole laps, in step with the scroller
+   * doing the same. Nothing moves on screen: depth is measured around a ring,
+   * so a position and that position minus a lap paint identically.
+   */
+  useEffect(() => {
+    registerRebase((laps: number) => {
+      const shift = laps * projects.length;
+      if (!shift) return;
+      deckSpring.current.value -= shift;
+      travelFrom.current -= shift;
+      lastGoal.current -= shift;
+      p.set(deckSpring.current.value);
+    });
+    return () => registerRebase(null);
+  }, [registerRebase, p]);
 
   // A pointer capture can be lost without a pointerup — release the deck
   // rather than leaving the scroller locked out.
@@ -510,6 +563,18 @@ export default function MediaLayer() {
    * only the front card, its two neighbours and the selected project get a real
    * <video>. Everything else falls back to its poster.
    */
+  /**
+   * The card currently under a gesture, if any.
+   *
+   * Kept in React state because it decides which card carries the pointer
+   * handlers, and that has to survive the whole gesture. The front card is not
+   * a safe answer: a drag drives the deck, so the front card CHANGES half way
+   * through the drag — at which point the handlers moved to a different card,
+   * the pointerup never arrived, and the one in your hand was left stranded
+   * out to the side with the gesture still notionally live.
+   */
+  const [dragIndex, setDragIndex] = useState(-1);
+
   const [nearIndex, setNearIndex] = useState(0);
   useMotionValueEvent(p, "change", (value) => {
     const next = (((Math.round(value) % projects.length) + projects.length) %
@@ -560,6 +625,8 @@ export default function MediaLayer() {
     // which is what the overshoot clamp below is measured against.
     if (goal !== lastGoal.current) {
       travelFrom.current = deckSpring.current.value;
+      if (goal !== travelFrom.current)
+        travelDir.current = goal > travelFrom.current ? 1 : -1;
       lastGoal.current = goal;
       // A scroll always sends the card round the right, as authored. A throw
       // has already chosen its side and holds it with the lock above.
@@ -592,6 +659,12 @@ export default function MediaLayer() {
       p.set(goal);
     } else {
       stepSpring(deckSpring.current, goal, dt, SPRING.travel);
+      // Never travel faster than a card can follow its own arc.
+      deckSpring.current.velocity = clamp(
+        deckSpring.current.velocity,
+        -DECK_MOTION.maxRate,
+        DECK_MOTION.maxRate,
+      );
       /**
        * Clamped to the span of the move even though the spring overshoots it.
        *
@@ -606,7 +679,33 @@ export default function MediaLayer() {
       const hi = Math.max(travelFrom.current, goal);
       p.set(clamp(deckSpring.current.value, lo, hi));
       if (deckSpring.current.value === goal && deckSpring.current.velocity === 0) {
-        travelFrom.current = goal;
+        /**
+         * Arrived. If the move went the long way round, fold the extra lap
+         * away now — a position and that position plus a full lap paint
+         * identically, so this is invisible, and it puts the deck back inside
+         * the range the scroller can express.
+         */
+        const landed = goal >= n ? goal - n : goal;
+        if (landed !== goal) {
+          pTarget.set(landed);
+          snapSpring(deckSpring.current, landed);
+          p.set(landed);
+          lastGoal.current = landed;
+        }
+        travelFrom.current = landed;
+        /**
+         * Only hand the position back to the scroller when something OTHER
+         * than the scroller put us here — a throw, or a jump the long way
+         * round. Doing it on every settle fights ordinary scrolling: the deck
+         * arrives, snaps the scroll position to the card it landed on, and
+         * undoes whatever the wheel had just done. On load it also jumped
+         * straight past the hero, because the deck settles on the first card
+         * before you have scrolled at all.
+         */
+        if (deckDriven.current) {
+          commitDeck(landed);
+          deckDriven.current = false;
+        }
         // Departure over; the next one goes round the right unless thrown.
         arcDir.current = 1;
         arcLocked.current = false;
@@ -629,6 +728,50 @@ export default function MediaLayer() {
      * moving between states, not for arriving at the first one.
      */
     const prime = !primed.current;
+
+    const deckCfg = stage.mobile ? DECK.mobile : DECK.desktop;
+
+    /**
+     * Work out who is in the air together, before moving any of them.
+     *
+     * A move across several cards puts three or four of them on the same path
+     * at almost the same moment. Left alone they trace each other exactly and
+     * collide, and since stacking among them was a single shared value, which
+     * one came out in front was down to document order. Ranking them by where
+     * they are HEADED settles both: it fans their arcs apart in space, and it
+     * gives each a distinct place in the stack.
+     */
+    {
+      const goal = pTarget.get();
+      const flying: number[] = [];
+      for (let i = 0; i < n; i++) {
+        const d = cardDepth(i, n, pv);
+        scratch.current.dest[i] = (((i - goal) % n) + n) % n;
+        if (arcOn.current[i] || d > n - 1) flying.push(i);
+        scratch.current.arcScale[i] = 1;
+        // Everything not in the air takes the deck's own side, which is all it
+        // is used for there — the slide-aside as a card passes.
+        scratch.current.side[i] = arcDir.current;
+      }
+      if (flying.length > 1) {
+        // Nearest the front of the stack when this is over swings widest — it
+        // is the one that has to get around everything else.
+        flying.sort((a, b) => scratch.current.dest[a] - scratch.current.dest[b]);
+        for (let k = 0; k < flying.length; k++) {
+          scratch.current.arcScale[flying[k]] =
+            1 + (flying.length - 1 - k) * DECK_MOTION.arcSpread;
+          /**
+           * Alternate sides down the group. The first still goes the way the
+           * deck was sent — a throw keeps its direction — and the rest split
+           * left and right from there, so a group riffles past the stack
+           * instead of queueing up on one side of it.
+           */
+          if (DECK_MOTION.alternateSides)
+            scratch.current.side[flying[k]] =
+              k % 2 === 0 ? arcDir.current : -arcDir.current;
+        }
+      }
+    }
 
     let moving = false;
 
@@ -666,7 +809,87 @@ export default function MediaLayer() {
       const piDeck =
         introDelay === 0 ? pig : introHistory.current.at(now - introDelay);
 
-      const deck = deckCard(i, n, pDeck, piDeck, stage, reduced, arcDir.current);
+      const depthNow = cardDepth(i, n, pv);
+      const atBack = mode === "home" && depthNow > n - 2;
+
+      /**
+       * Start the clock the moment the card leaves the deck, from whichever
+       * end it is leaving: forwards it departs from the front, backwards it
+       * re-emerges from the back. Once running it is latched until it reaches
+       * the other end, so the arc is never abandoned half way.
+       */
+      const leaving = mode === "home" && depthNow > n - 1;
+      if (leaving && !arcOn.current[i]) {
+        const entry = 1 - (depthNow - (n - 1));
+        arcOn.current[i] = true;
+        arcClock.current[i].value = entry < 0.5 ? 0 : 1;
+        arcClock.current[i].velocity = 0;
+      }
+
+      let clock: number | undefined;
+      if (arcOn.current[i]) {
+        /**
+         * Where the card is headed comes from the deck's COMMITTED
+         * destination, not from which way it happens to be moving right now.
+         *
+         * A settling spring's velocity crosses zero and wobbles either side of
+         * it, so reading direction from velocity made the aim flip as the move
+         * ended: the card completed its arc, reversed it, and then ran it
+         * again. The destination is a whole number that does not move during a
+         * move, so it cannot do that. Past this card means it is going to the
+         * back; at or before it means it belongs at the front.
+         */
+        /**
+         * Where the card is headed follows the direction of the move as a
+         * whole, not this card's index against the destination. The deck can
+         * run past the end of its range when it wraps the long way round, and
+         * an index comparison stops meaning anything there.
+         */
+        const aim = travelDir.current > 0 ? 1 : 0;
+
+        if (g.grabbed && g.index === i) {
+          /**
+           * While a card is held, the hand IS the clock.
+           *
+           * Otherwise the arc runs at its own pace underneath the drag and the
+           * card barely answers the pointer — it drifts along its path on a
+           * schedule of its own while you are holding it, which is the
+           * opposite of picking something up. The velocity is kept so the
+           * spring takes over mid-motion at the release with the speed the
+           * throw actually had.
+           */
+          const span = Math.max(1, deckThrow(stage));
+          const held = clamp(Math.abs(g.dx) / span, 0, 1);
+          arcClock.current[i].velocity =
+            dt > 0 ? (held - arcClock.current[i].value) / dt : 0;
+          arcClock.current[i].value = held;
+        } else if (reduced) {
+          snapSpring(arcClock.current[i], aim);
+        } else {
+          stepSpring(arcClock.current[i], aim, dt, SPRING.arcClock);
+        }
+        const v = clamp(arcClock.current[i].value, 0, 1);
+        arcClock.current[i].value = v;
+        clock = v;
+        // Finished, and the deck has moved on past it: hand back to depth.
+        if (!leaving && (v <= 0.001 || v >= 0.999)) {
+          arcOn.current[i] = false;
+          clock = undefined;
+        }
+      }
+      const onArc = clock !== undefined;
+
+      const deck = deckCard(
+        i,
+        n,
+        pDeck,
+        piDeck,
+        stage,
+        reduced,
+        scratch.current.side[i] as 1 | -1,
+        clock,
+        scratch.current.arcScale[i],
+      );
       let target: Geo;
       if (mode === "case") {
         if (i === sel) {
@@ -700,6 +923,7 @@ export default function MediaLayer() {
        * now the opposite: it springs continuously, which is what lets a card
        * carry momentum out of a throw and what gives the stack its slack.
        */
+
       const animate =
         !prime && !reduced && (settling.current || mode === "home");
       /**
@@ -708,7 +932,6 @@ export default function MediaLayer() {
        * carrying the arc, and a card still wobbling once it is parked behind
        * the others draws the eye to the least interesting thing on screen.
        */
-      const atBack = mode === "home" && cardDepth(i, n, pv) > n - 2;
       let config: SpringConfig;
       if (mode === "case") config = i === sel ? SPRING.handoff : SPRING.drop;
       else if (dragging) config = follow;
@@ -730,6 +953,7 @@ export default function MediaLayer() {
       if (mode !== "home") v.z.set(target.z);
       scratch.current.targetX[i] = target.x;
       scratch.current.dragging[i] = dragging;
+      scratch.current.clock[i] = clock === undefined ? -1 : clock;
     }
 
     /**
@@ -745,10 +969,27 @@ export default function MediaLayer() {
      * better, which is what gave this away.
      */
     if (mode === "home") {
+      /**
+       * Measured across the SOLID front of the stack only.
+       *
+       * Rotation grows with depth, so a card with a large seeded angle sitting
+       * deep juts out nearly 60px further than the rest — and the departing
+       * card then could not clear the stack at all, so its flip fell through
+       * to the end-of-arc fallback and it rode along on top for the whole
+       * trip. Which cards those are depends on the seed, which is why it
+       * happened on one transition in five and looked intermittent.
+       *
+       * The cards past this point are heavily washed and sit behind the ones
+       * in front of them, so the sliver of them that protrudes cannot show a
+       * card passing over it. Clearing the solid front is what the eye is
+       * actually judging.
+       */
+      const solid = deckCfg.opaqueDepth + 1;
       let right = 0;
       let left = Infinity;
       for (let i = 0; i < n; i++) {
-        if (cardDepth(i, n, pv) > n - 1) continue;
+        const d = cardDepth(i, n, pv);
+        if (d > n - 1 || d > solid) continue;
         const s = springs.current[i];
         right = Math.max(right, centreX(s) + halfExtent(s));
         left = Math.min(left, centreX(s) - halfExtent(s));
@@ -767,33 +1008,93 @@ export default function MediaLayer() {
         continue;
       }
       const depth = cardDepth(i, n, pv);
-      if (depth < n - 1) {
-        behind.current[i] = false;
+      const clockNow = scratch.current.clock[i];
+      if (clockNow < 0) {
+        /**
+         * Not in transit: stacking is just depth. `behind` is only seeded here
+         * for whenever this card next leaves the stack, and which end it will
+         * leave from depends on which way the deck is going — forwards it
+         * departs from the front, backwards it re-emerges from the back.
+         */
+        behind.current[i] = depth > (n - 1) / 2;
         v.z.set(Math.round(50 - depth));
         continue;
       }
-      const t = 1 - (depth - (n - 1));
-      if (t < 0.5) {
-        behind.current[i] = false;
-      } else if (!behind.current[i]) {
-        const margin = s.w.value * DECK_MOTION.clearMargin;
-        const cleared =
-          arcDir.current > 0
-            ? centreX(s) - halfExtent(s) > stackRight.current + margin
-            : centreX(s) + halfExtent(s) < stackLeft.current - margin;
+
+      /**
+       * In transit. Whether the card is painted in front of the stack or
+       * behind it is a latch, and BOTH edges of it are gated on the card
+       * actually being clear of the stack.
+       *
+       * Only the going-behind edge used to be. Coming back — scrubbing up the
+       * deck — flipped to the front at the midpoint of the arc no matter where
+       * the card had got to, so it surfaced straight through the cards it was
+       * still sitting behind. The two directions are mirror images of the same
+       * move and need the same guard.
+       */
+      // The card's own arc position, not the deck's — the same value its
+      // geometry was built from, so the two cannot disagree.
+      const t = clockNow;
+      const margin = s.w.value * DECK_MOTION.clearMargin;
+      // Judged against the side THIS card went round, not the deck's.
+      const side = scratch.current.side[i];
+      const clear =
+        side > 0
+          ? centreX(s) - halfExtent(s) > stackRight.current + margin
+          : centreX(s) + halfExtent(s) < stackLeft.current - margin;
+      // Arrived wherever the arc was taking it, within a pixel or two.
+      const settled = Math.abs(s.x.value - scratch.current.targetX[i]) < 2;
+
+      /**
+       * The card's own turnaround: the frame it stops travelling away from the
+       * stack and starts coming back.
+       *
+       * This is the moment the swap belongs on, and it exists no matter how
+       * fast the deck is moving. Waiting for the card to be fully CLEAR of the
+       * stack does not: the card is a spring chasing its arc, so at speed it
+       * never gets that far out, the test never passes, and the swap falls
+       * through to an end-of-move fallback — riding across the top going
+       * forwards, sitting low coming back. Both of those are the bug.
+       *
+       * At the turnaround the card is as far out as it is ever going to get,
+       * so it is the least overlapped it will be and the point the eye reads
+       * as it going round. Clearance still counts, and usually fires first on
+       * an unhurried move; this is what catches the rest.
+       */
+      const turning = side > 0 ? s.x.velocity <= 0 : s.x.velocity >= 0;
+
+      if (behind.current[i]) {
+        // Back out over the top — at the turnaround, or once clear again, or
+        // once home on the front where in front is right by definition.
         /**
-         * The fallback exists only for a card that has come to rest on its
-         * place at the back: parked behind the others but painted in front of
-         * them is the same defect mirrored. Gated on having ARRIVED, not on
-         * the arc having notionally finished — `t` is measured in target space
-         * and the card trails its target, so firing on `t` alone dropped the
-         * card while it was still out and mid-tuck.
+         * The last third of the return is unconditional.
+         *
+         * On a fast jump backwards the card can still be accelerating outward
+         * when its turn is over — it never turns around, so neither the
+         * turnaround nor the clearance test ever fires and it stays behind the
+         * stack right up to the moment it becomes the front card. Past this
+         * point it is on its way to the front regardless, so showing it in
+         * front is what it is about to be anyway; holding it back is the worse
+         * of the two errors and it is the one that reads as broken.
          */
-        const arrived =
-          t >= 0.985 && Math.abs(s.x.value - scratch.current.targetX[i]) < 2;
-        if (cleared || arrived) behind.current[i] = true;
+        if (t < 0.3 || (t < 0.65 && (clear || turning || (t <= 0.02 && settled)))) {
+          behind.current[i] = false;
+        }
+      } else if (t >= 0.35 && (clear || turning || (t >= 0.98 && settled))) {
+        // Down behind, at the turnaround or once clear.
+        behind.current[i] = true;
       }
-      v.z.set(behind.current[i] ? 50 - (n - 1) : 60);
+
+      /**
+       * Cards in the air get distinct places, ordered by where they are going.
+       *
+       * They all used to share one value, so with several travelling at once
+       * their order came down to document order and the wrong one surfaced in
+       * front. Above the resting stack when they are passing over it, below it
+       * when they have gone behind, and never equal to each other.
+       */
+      const dest = scratch.current.dest[i];
+      v.z.set(behind.current[i] ? 44 - dest : 66 - dest);
     }
 
     if (prime) {
@@ -831,6 +1132,8 @@ export default function MediaLayer() {
         {projects.map((project, i) => {
           const v = values.current[i];
           const isFront = mode === "home" && i === nearIndex;
+          // Whatever is under the hand keeps the pointer, front or not.
+          const grabbable = mode === "home" && (isFront || i === dragIndex);
           const isSelected = mode === "case" && i === selectedIndex;
           const wantsVideo = !!project.src && liveVideo.has(i);
 
@@ -838,17 +1141,17 @@ export default function MediaLayer() {
             <motion.div
               key={project.slug}
               onPointerDown={
-                isFront ? (e) => onPointerDown(e, i) : undefined
+                grabbable ? (e) => onPointerDown(e, i) : undefined
               }
-              onPointerMove={isFront ? onPointerMove : undefined}
-              onPointerUp={isFront ? (e) => endGesture(e, false) : undefined}
-              onPointerCancel={isFront ? (e) => endGesture(e, true) : undefined}
+              onPointerMove={grabbable ? onPointerMove : undefined}
+              onPointerUp={grabbable ? (e) => endGesture(e, false) : undefined}
+              onPointerCancel={grabbable ? (e) => endGesture(e, true) : undefined}
               /**
                * Capture phase, so this runs before the link underneath it. A
                * press that became a drag must not also navigate on release.
                */
               onClickCapture={
-                isFront
+                grabbable
                   ? (e) => {
                       if (!gesture.current.suppressClick) return;
                       e.preventDefault();
@@ -878,8 +1181,8 @@ export default function MediaLayer() {
                 boxShadow: isFront || isSelected
                   ? SHADOW.cardFront
                   : SHADOW.cardBack,
-                pointerEvents: isFront ? "auto" : "none",
-                cursor: isFront ? "grab" : undefined,
+                pointerEvents: grabbable ? "auto" : "none",
+                cursor: grabbable ? "grab" : undefined,
                 // Vertical stays with the page so the deck still scrolls on a
                 // phone; horizontal is ours, which is the throw gesture.
                 touchAction: isFront ? "pan-y" : undefined,
@@ -892,6 +1195,7 @@ export default function MediaLayer() {
               <CardFace
                 project={project}
                 radius={v.innerRadius}
+                scrim={v.scrim}
                 wantsVideo={wantsVideo}
                 showBar={
                   isSelected &&
@@ -931,11 +1235,13 @@ export default function MediaLayer() {
 function CardFace({
   project,
   radius,
+  scrim,
   wantsVideo,
   showBar,
 }: {
   project: (typeof projects)[number];
   radius: MotionValue<number>;
+  scrim: MotionValue<number>;
   wantsVideo: boolean;
   showBar: boolean;
 }) {
@@ -1005,6 +1311,27 @@ function CardFace({
           }}
         />
       ) : null}
+
+      {/*
+        Depth wash.
+        
+        Inside the clipped face so it takes the card's corners, and above the
+        media so it veils it. This is what carries depth now — painted on the
+        card rather than making the card transparent, so a card further back
+        never shows the one beneath it through itself.
+      */}
+      <motion.div
+        aria-hidden
+        data-scrim
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "var(--page)",
+          opacity: scrim,
+          pointerEvents: "none",
+          zIndex: 3,
+        }}
+      />
 
       {/* Desktop-window chrome, for the shots framed as a desktop app. */}
       <div

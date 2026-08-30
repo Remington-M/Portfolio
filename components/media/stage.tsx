@@ -81,6 +81,18 @@ export type StageState = {
   registerDeckScroll: (fn: ((value: number) => void) | null) => void;
   /** Hand a gesture's final deck position back to the scroller. */
   commitDeck: (value: number) => void;
+
+  /**
+   * Shift the deck's position by a whole number of laps without moving
+   * anything on screen.
+   *
+   * Depth is measured around a ring, so a position and that position plus a
+   * lap paint identically. That is what lets the deck be scrolled for ever: the
+   * scroller quietly rewinds a lap whenever one is completed, and this keeps
+   * the animation's own state in step with it.
+   */
+  rebaseDeck: (laps: number) => void;
+  registerRebase: (fn: ((laps: number) => void) | null) => void;
 };
 
 const StageContext = createContext<StageState | null>(null);
@@ -133,6 +145,17 @@ export function StageProvider({ children }: { children: ReactNode }) {
     deckScroll.current?.(value);
   }, []);
 
+  const rebase = useRef<((laps: number) => void) | null>(null);
+  const registerRebase = useCallback(
+    (fn: ((laps: number) => void) | null) => {
+      rebase.current = fn;
+    },
+    [],
+  );
+  const rebaseDeck = useCallback((laps: number) => {
+    rebase.current?.(laps);
+  }, []);
+
   // Keep the selected project in sync with the URL, so a deep link or a back
   // button lands with the right card as the shared element.
   useEffect(() => {
@@ -183,6 +206,8 @@ export function StageProvider({ children }: { children: ReactNode }) {
       deckDriven,
       registerDeckScroll,
       commitDeck,
+      rebaseDeck,
+      registerRebase,
     }),
     [
       values,
@@ -192,6 +217,8 @@ export function StageProvider({ children }: { children: ReactNode }) {
       transitionKey,
       registerDeckScroll,
       commitDeck,
+      rebaseDeck,
+      registerRebase,
     ],
   );
 
