@@ -1,14 +1,15 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, useMotionValueEvent, useTransform, useReducedMotion } from "motion/react";
 import { useStage } from "@/components/media/stage";
 import Header from "@/components/Header";
 import Ticks from "@/components/Ticks";
-import { CASE, SHADOW } from "@/lib/design";
+import { CASE, HOUSE_CSS, SHADOW, SPRING } from "@/lib/design";
 import {
   caseBaseline,
+  caseCaption,
   caseScrollHeight,
   ghostCards,
   returnProgress,
@@ -60,6 +61,9 @@ export default function CaseDesktop({ project }: { project: Project }) {
   const s = stage.s;
   const ts = stage.ts;
   const baseline = caseBaseline(stage);
+  // Shots are centred now, so the caption has its own line rather than sitting
+  // a fixed distance under a shared bottom edge.
+  const caption = caseCaption(stage);
 
   const introOpacity = useTransform(cp, (v) => clamp01(1 - Math.abs(v) * 1.9));
   const introY = useTransform(cp, (v) => (reduced ? 0 : -v * 44));
@@ -75,6 +79,36 @@ export default function CaseDesktop({ project }: { project: Project }) {
     const q = Math.round(r * 30) / 30;
     setGhostR((prev) => (prev === q ? prev : q));
   });
+
+  /**
+   * Arrow keys step through the shots.
+   *
+   * The arrows and the scroll both exist, but neither is reachable from the
+   * keyboard — and this page is a sequence, which is exactly the shape a
+   * keyboard expects to be able to walk. Home and End go to the ends, since
+   * fourteen shots is a long way to hold an arrow key down.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      // Leave typing and activating alone.
+      if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)))
+        return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const last = shotCount - 1;
+      const at = clamp(Math.round(cp.get()), 0, last);
+      let next: number | null = null;
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") next = Math.min(last, at + 1);
+      else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = Math.max(0, at - 1);
+      else if (e.key === "Home") next = 0;
+      else if (e.key === "End") next = last;
+      if (next === null || next === at) return;
+      e.preventDefault();
+      jump(next);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [cp, jump, shotCount]);
 
   const kicker = `${project.title} · ${project.yearLong ?? project.year}`.toUpperCase();
   const titleLines = project.displayTitle ?? [project.title];
@@ -217,7 +251,7 @@ export default function CaseDesktop({ project }: { project: Project }) {
                 position: "absolute",
                 left: 0,
                 right: 0,
-                top: baseline + 26 * s,
+                top: caption,
                 height: 56 * ts,
                 zIndex: 56,
                 textAlign: "center",
@@ -225,7 +259,13 @@ export default function CaseDesktop({ project }: { project: Project }) {
               }}
             >
               {project.shots.map((shot, i) => (
-                <ShotTitle key={shot.n} index={i + 1} title={shot.title} meta={shot.meta} />
+                <ShotTitle
+                  key={shot.n}
+                  index={i + 1}
+                  active={active}
+                  title={shot.title}
+                  meta={shot.meta}
+                />
               ))}
             </motion.div>
 
@@ -252,6 +292,32 @@ export default function CaseDesktop({ project }: { project: Project }) {
               >
                 RETURN TO WORK
               </Link>
+            </motion.div>
+
+            {/*
+              Step arrows.
+
+              Scrolling is the real control, but nothing on the page says so —
+              a viewer sitting still with a caption under it looks like a
+              picture, not like something you move through. These are the
+              affordance: quiet enough to stay out of the way, present enough
+              that the page reads as steppable at a glance. They persist rather
+              than appearing on hover, since a control you have to discover by
+              hovering solves nothing for the person who did not know to look.
+            */}
+            <motion.div style={{ opacity: chromeOpacity }}>
+              <StepArrow
+                side="left"
+                label="Previous shot"
+                disabled={active === 0}
+                onClick={() => jump(Math.max(0, active - 1))}
+              />
+              <StepArrow
+                side="right"
+                label="Next shot"
+                disabled={active >= shotCount - 1}
+                onClick={() => jump(Math.min(shotCount - 1, active + 1))}
+              />
             </motion.div>
 
             <motion.div
@@ -296,26 +362,111 @@ export default function CaseDesktop({ project }: { project: Project }) {
   );
 }
 
-/** A single shot title, crossfading and sliding with the scroll. */
+/**
+ * One of the two step arrows. Hit area is generous; the mark inside it is not.
+ */
+function StepArrow({
+  side,
+  label,
+  disabled,
+  onClick,
+}: {
+  side: "left" | "right";
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  const { stage } = useStage();
+  const s = stage.s;
+  const [hover, setHover] = useState(false);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      onPointerEnter={() => setHover(true)}
+      onPointerLeave={() => setHover(false)}
+      style={{
+        position: "absolute",
+        [side]: 34 * s,
+        top: "50%",
+        transform: "translateY(-50%)",
+        zIndex: 62,
+        width: 56 * s,
+        height: 56 * s,
+        display: "grid",
+        placeItems: "center",
+        border: 0,
+        borderRadius: "50%",
+        background: "none",
+        color: "var(--ink)",
+        cursor: disabled ? "default" : "pointer",
+        // Faint at rest, definite on approach, gone when there is nowhere to go.
+        opacity: disabled ? 0.12 : hover ? 0.8 : 0.34,
+        transition: `opacity .3s ${HOUSE_CSS}`,
+        padding: 0,
+      }}
+    >
+      <svg
+        width={22 * s}
+        height={22 * s}
+        viewBox="0 0 22 22"
+        fill="none"
+        aria-hidden
+      >
+        <path
+          d={side === "left" ? "M13.5 4L6.5 11l7 7" : "M8.5 4l7 7-7 7"}
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
+  );
+}
+
+/**
+ * A single shot title.
+ *
+ * Changes on the shot rather than under the scroll. Driven from the scroll
+ * position it was continuously part-way between two titles — both half
+ * visible, both half moved — which reads as neither. Like the viewer's morph,
+ * this is a move between two settled states, and the in-between is somewhere
+ * it passes through rather than somewhere it sits.
+ */
 function ShotTitle({
   index,
+  active,
   title,
   meta,
 }: {
   index: number;
+  active: number;
   title: string;
   meta: string;
 }) {
-  const { cp, stage } = useStage();
+  const { stage } = useStage();
   const ts = stage.ts;
-  const opacity = useTransform(cp, (v) =>
-    clamp01(1 - Math.abs(v - index) * 2.4),
-  );
-  const y = useTransform(cp, (v) => (v - index) * 26 * stage.s);
+  const on = active === index;
 
   return (
     <motion.div
-      style={{ position: "absolute", left: 0, right: 0, top: 0, opacity, y }}
+      initial={false}
+      animate={{ opacity: on ? 1 : 0, y: on ? 0 : (active > index ? -14 : 14) * stage.s }}
+      transition={SPRING.morph}
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        top: 0,
+        // Only the one on screen can be reached or read out.
+        pointerEvents: "none",
+        visibility: on ? "visible" : "hidden",
+      }}
+      aria-hidden={!on}
     >
       <div
         style={{

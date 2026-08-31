@@ -11,9 +11,17 @@ import {
 } from "motion/react";
 import Link from "next/link";
 import { useStage } from "./stage";
-import { projects, stripeFill } from "@/lib/projects";
-import { asset } from "@/lib/asset";
-import { SHADOW, SPRING, DECK, DECK_MOTION, DRAG } from "@/lib/design";
+import { projects, stripeFill, type Shot } from "@/lib/projects";
+import { asset, media } from "@/lib/asset";
+import {
+  CASE,
+  GENTLE,
+  SHADOW,
+  SPRING,
+  DECK,
+  DECK_MOTION,
+  DRAG,
+} from "@/lib/design";
 import {
   cardDepth,
   caseFrame,
@@ -21,12 +29,12 @@ import {
   deckCardSize,
   deckOrigin,
   deckThrow,
-  frameHasBar,
   railCard,
   type Geo,
 } from "@/lib/geometry";
 import {
   clamp,
+  cubicBezier,
   spring,
   snapSpring,
   springConfig,
@@ -342,6 +350,16 @@ export default function MediaLayer() {
    * Carried over from the previous frame, which is invisible at these speeds.
    */
   const stackRight = useRef(0);
+  /** The display's pixel grid, so laid-out values can be snapped to it. */
+  const dprRef = useRef(1);
+  useEffect(() => {
+    const read = () => {
+      dprRef.current = window.devicePixelRatio || 1;
+    };
+    read();
+    window.addEventListener("resize", read);
+    return () => window.removeEventListener("resize", read);
+  }, []);
   /** The same edge on the left, for a card thrown that way. */
   const stackLeft = useRef(0);
   /** Scratch for the second pass, allocated once rather than per frame. */
@@ -582,6 +600,29 @@ export default function MediaLayer() {
     setNearIndex((prev) => (prev === next ? prev : next));
   });
 
+  /**
+   * Which shot the project page is showing. Drives which clips are mounted at
+   * all, so the page never has more than a few decoding at once.
+   */
+  const [shotIndex, setShotIndex] = useState(0);
+  useMotionValueEvent(cp, "change", (v) => {
+    const next = Math.max(0, Math.round(v));
+    setShotIndex((prev) => (prev === next ? prev : next));
+  });
+
+  /** The shot we were on last, so a change of shot can be noticed. */
+  const lastShot = useRef(-1);
+  /**
+   * The dip the viewer takes when a clip is replaced by one of the same shape.
+   *
+   * Its own spring rather than a nudge to the frame's: it is a separate motion
+   * with a settle, a hold and a release, and it is multiplied into the scale at
+   * the end so the morph underneath it stays exactly as it was.
+   */
+  const bump = useRef({ value: 1, velocity: 0 });
+  const bumpPhase = useRef<"idle" | "down" | "up">("idle");
+  const bumpAt = useRef(0);
+
   const [selectedIndex, setSelectedIndex] = useState(-1);
   useMotionValueEvent(selected, "change", (v) => setSelectedIndex(v));
 
@@ -600,11 +641,39 @@ export default function MediaLayer() {
     settling.current = true;
   }, [transitionKey]);
 
-  const shotKinds = useMemo(() => {
+  /**
+   * The shape of each screen on the project page: the intro, then one per
+   * shot. Carries each clip's true proportions so the viewer can take its
+   * shape from the footage rather than from a box authored by hand.
+   */
+  const shotShapes = useMemo(() => {
     if (selectedIndex < 0) return [];
     const project = projects[selectedIndex];
-    return ["portrait" as const, ...project.shots.map((s) => s.kind)];
+    return [
+      { kind: "portrait" as const, aspect: undefined },
+      ...project.shots.map((s) => ({ kind: s.kind, aspect: s.aspect })),
+    ];
   }, [selectedIndex]);
+
+  /**
+   * A dip when the shape does not change.
+   *
+   * Nudging the scale spring off its target is all this takes: the target is
+   * still 1, so the same morph spring carries it back, and it needs no
+   * animation of its own to unwind or get interrupted by the next shot.
+   */
+  useEffect(() => {
+    const prev = lastShot.current;
+    lastShot.current = shotIndex;
+    if (selectedIndex < 0 || prev < 0 || prev === shotIndex) return;
+    const from = shotShapes[prev]?.aspect;
+    const to = shotShapes[shotIndex]?.aspect;
+    if (from === undefined || to === undefined) return;
+    // A real change of shape is its own signal; this is only for the rest.
+    if (Math.abs(from - to) > 0.02) return;
+    bumpPhase.current = "down";
+    bumpAt.current = performance.now();
+  }, [shotIndex, selectedIndex, shotShapes]);
 
   useAnimationFrame((time, deltaMs) => {
     if (stage.w === 0 || stage.h === 0) return;
@@ -773,6 +842,42 @@ export default function MediaLayer() {
       }
     }
 
+    /**
+     * Step the dip: down on a clock, back up on a spring.
+     *
+     * The descent is a stated 500ms on the house curve, so it is still moving
+     * when it reaches the bottom. The spring then takes over mid-motion — the
+     * integrator is stepped by hand here, so handing one motion to another
+     * carries position and velocity across with no seam, and the changeover is
+     * a continuation rather than a restart.
+     */
+    if (bumpPhase.current !== "idle") {
+      if (bumpPhase.current === "down") {
+        const t = (performance.now() - bumpAt.current) / CASE.bumpDown;
+        if (t >= 1) {
+          bump.current.value = 1 - CASE.bump;
+          /**
+           * Handed over at rest, not with the descent's speed.
+           *
+           * Carrying velocity across only makes sense from a curve that is
+           * still travelling when it ends. This one eases out, so it arrives
+           * at the bottom already stopped — and the velocity being estimated
+           * from a finite difference over the last 4% of it was small, noisy
+           * and pointed the wrong way for the spring, which is what made the
+           * return read as a stutter rather than as a spring at all.
+           */
+          bump.current.velocity = 0;
+          bumpPhase.current = "up";
+        } else {
+          bump.current.value = 1 - CASE.bump * BUMP_EASE(t);
+        }
+      } else {
+        stepSpring(bump.current, 1, dt, SPRING.bumpUp);
+        if (bump.current.value === 1) bumpPhase.current = "idle";
+      }
+    }
+
+    const dpr = dprRef.current;
     let moving = false;
 
     for (let i = 0; i < n; i++) {
@@ -897,7 +1002,7 @@ export default function MediaLayer() {
           // rail. Either way this is the same element that was on the deck.
           target = stage.mobile
             ? railCard(0, cpv, stage, reduced)
-            : caseFrame(cpv, shotKinds, stage);
+            : caseFrame(cpv, shotShapes, stage);
         } else {
           target = dropped(deck, i, reduced);
         }
@@ -924,8 +1029,17 @@ export default function MediaLayer() {
        * carry momentum out of a throw and what gives the stack its slack.
        */
 
+      /**
+       * The viewer on a project page keeps animating rather than snapping.
+       *
+       * Shot stepping is scroll-driven, and everything scroll-driven here
+       * otherwise tracks exactly — but this one is a player changing shape to
+       * fit the clip inside it, and a shape that snaps between sizes reads as
+       * two players swapping rather than one adapting. The lag is the point.
+       */
+      const morphing = mode === "case" && i === sel;
       const animate =
-        !prime && !reduced && (settling.current || mode === "home");
+        !prime && !reduced && (settling.current || mode === "home" || morphing);
       /**
        * The back of the stack — the card in transit plus the slot it lands in
        * — runs a firmer, much less bouncy spring than the front. It is the one
@@ -933,7 +1047,12 @@ export default function MediaLayer() {
        * the others draws the eye to the least interesting thing on screen.
        */
       let config: SpringConfig;
-      if (mode === "case") config = i === sel ? SPRING.handoff : SPRING.drop;
+      if (mode === "case")
+        config = i === sel
+          ? settling.current
+            ? SPRING.handoff
+            : SPRING.morph
+          : SPRING.drop;
       else if (dragging) config = follow;
       else if (atBack) config = SPRING.toBack;
       else config = SPRING.deck;
@@ -946,7 +1065,15 @@ export default function MediaLayer() {
         } else {
           snapSpring(s[field], to);
         }
-        v[field].set(s[field].value);
+        // The dip rides on top of the morph rather than replacing it, so the
+        // frame keeps changing shape underneath while the viewer flinches.
+        let out =
+          field === "scale" && mode === "case" && i === sel
+            ? s[field].value * bump.current.value
+            : s[field].value;
+        // Anything that gets laid out has to land on the pixel grid.
+        if (LAYOUT_FIELDS.has(field)) out = Math.round(out * dpr) / dpr;
+        v[field].set(out);
       }
       // On a project page the geometry owns stacking outright. On home it is
       // decided in the second pass below, once the stack's edge is known.
@@ -1178,9 +1305,15 @@ export default function MediaLayer() {
                 transformPerspective: perspective,
                 transformOrigin: "50% 50%",
                 background: isSelected ? "var(--device)" : undefined,
-                boxShadow: isFront || isSelected
-                  ? SHADOW.cardFront
-                  : SHADOW.cardBack,
+                // The viewer gets a wider, softer shadow than a deck card —
+                // it is a single object on an empty stage rather than one of a
+                // pile, so the shadow is doing the work of lifting it off the
+                // page rather than separating it from its neighbours.
+                boxShadow: isSelected
+                  ? SHADOW.device
+                  : isFront
+                    ? SHADOW.cardFront
+                    : SHADOW.cardBack,
                 pointerEvents: grabbable ? "auto" : "none",
                 cursor: grabbable ? "grab" : undefined,
                 // Vertical stays with the page so the deck still scrolls on a
@@ -1188,8 +1321,17 @@ export default function MediaLayer() {
                 touchAction: isFront ? "pan-y" : undefined,
                 userSelect: "none",
                 WebkitUserSelect: "none",
-                // Promote only what is actually moving in front of the viewer.
-                willChange: isFront || isSelected ? "transform, opacity" : "auto",
+                /**
+                 * Promote only what is actually moving in front of the viewer.
+                 * The project viewer additionally resizes, and naming that
+                 * keeps its contents on one layer through the morph rather
+                 * than being re-rasterised from scratch each frame.
+                 */
+                willChange: isSelected
+                  ? "width, height, transform"
+                  : isFront
+                    ? "transform, opacity"
+                    : "auto",
               }}
             >
               <CardFace
@@ -1197,16 +1339,9 @@ export default function MediaLayer() {
                 radius={v.innerRadius}
                 scrim={v.scrim}
                 wantsVideo={wantsVideo}
-                showBar={
-                  isSelected &&
-                  !stage.mobile &&
-                  shotKinds.length > 0 &&
-                  frameHasBar(
-                    shotKinds[
-                      Math.max(0, Math.min(shotKinds.length - 1, Math.round(cp.get())))
-                    ],
-                  )
-                }
+                activeShot={isSelected ? shotIndex : 0}
+                playing={isSelected || isFront}
+                showBar={false}
               />
               {isFront ? (
                 <Link
@@ -1232,17 +1367,135 @@ export default function MediaLayer() {
   );
 }
 
+/**
+ * How many shots either side of the one on screen keep a clip mounted.
+ *
+ * Nothing downloads until its element exists, so this IS the loading policy —
+ * a project page has up to nine shots and mounting them all would pull every
+ * file on arrival and leave nine decoders alive at once, which is exactly what
+ * a phone cannot afford. One either side means the next shot is ready before
+ * it is asked for, without the page ever holding more than three.
+ *
+ * The usual trick for this is an IntersectionObserver, which does not apply
+ * here: the shots do not scroll past, they are one frame that morphs in place.
+ * Distance in shots is this page's equivalent of distance down the page.
+ */
+const SHOT_WINDOW = 1;
+
+/** The descent of the viewer's dip. Eased at both ends, so it is pressed. */
+const BUMP_EASE = cubicBezier(GENTLE[0], GENTLE[1], GENTLE[2], GENTLE[3]);
+
+/**
+ * Fields that drive layout rather than a transform, and so have to land on
+ * real pixels.
+ *
+ * A transform can sit anywhere it likes — the compositor resamples it and it
+ * stays smooth. Width, height and radius cannot: they are laid out and painted,
+ * and a value a third of a pixel from the grid puts the frame's edge across two
+ * pixels and antialiases it differently every frame. Over a morph that reads as
+ * the edges crawling. Rounded to the device's own pixels, so on a 2x display
+ * this still moves in half-CSS-pixel steps and loses nothing visible.
+ */
+const LAYOUT_FIELDS = new Set(["w", "h", "radius", "pad", "innerRadius"]);
+
+/**
+ * One shot's clip.
+ *
+ * No controls, no chrome: muted, looping, inline, and played or paused from
+ * code rather than by the browser's own UI. Only the shot on screen runs; its
+ * neighbours are mounted so they are buffered and ready, but held paused and
+ * hidden.
+ */
+function ShotClip({
+  shot,
+  active,
+  visible,
+}: {
+  shot: Shot;
+  active: boolean;
+  visible: boolean;
+}) {
+  const ref = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.muted = true;
+    if (active) {
+      // Always from the top. A clip that carries on from where it was left is
+      // showing the middle of itself to someone arriving at its beginning.
+      el.currentTime = 0;
+      const played = el.play();
+      if (played && played.catch) played.catch(() => {});
+    } else {
+      el.pause();
+      // Wound back rather than merely stopped, so nothing is running on in the
+      // background and every arrival is the same arrival.
+      el.currentTime = 0;
+    }
+  }, [active]);
+
+  return (
+    <video
+      ref={ref}
+      poster={media(shot.poster)}
+      draggable={false}
+      muted
+      loop
+      playsInline
+      // Metadata only. The file itself is fetched when playback starts, so a
+      // shot two steps away costs a few kilobytes rather than a few megabytes.
+      preload="metadata"
+      style={{
+        /**
+         * Overhangs its box by a pixel on every side.
+         *
+         * Sized to exactly 100% it lands on fractional pixels as the frame
+         * morphs, and the sliver it fails to cover shows the card's own dark
+         * background — a black edge that crawls, and against white footage it
+         * is the most visible thing on screen. `cover` is already cropping, so
+         * losing another pixel costs nothing and guarantees there is never a
+         * gap to see through.
+         */
+        position: "absolute",
+        top: -1,
+        left: -1,
+        width: "calc(100% + 2px)",
+        height: "calc(100% + 2px)",
+        objectFit: "cover",
+        display: "block",
+        // A cut, not a dissolve: two clips fading through each other reads as
+        // a slideshow, and mid-fade both are half-there and neither is legible.
+        opacity: visible ? 1 : 0,
+        zIndex: 2,
+        pointerEvents: "none",
+      }}
+    >
+      {shot.srcWebm ? (
+        <source src={media(shot.srcWebm)} type="video/webm" />
+      ) : null}
+      {shot.src ? <source src={media(shot.src)} type="video/mp4" /> : null}
+    </video>
+  );
+}
+
 function CardFace({
   project,
   radius,
   scrim,
   wantsVideo,
+  activeShot,
+  playing,
   showBar,
 }: {
   project: (typeof projects)[number];
   radius: MotionValue<number>;
   scrim: MotionValue<number>;
   wantsVideo: boolean;
+  /** 0 is the intro, which shows the project's own clip; 1+ are its shots. */
+  activeShot: number;
+  /** Whether this card's clip should be running at all. */
+  playing: boolean;
   showBar: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -1253,9 +1506,14 @@ function CardFace({
     // iOS refuses to autoplay unless the element is muted, and without
     // playsInline it takes the video fullscreen instead of playing in place.
     el.muted = true;
-    const played = el.play();
-    if (played && played.catch) played.catch(() => {});
-  }, [wantsVideo]);
+    if (playing && activeShot === 0) {
+      const played = el.play();
+      if (played && played.catch) played.catch(() => {});
+    } else if (!el.paused) {
+      // A clip that is not on screen should not be burning a decoder.
+      el.pause();
+    }
+  }, [wantsVideo, playing, activeShot]);
 
   return (
     <motion.div
@@ -1268,6 +1526,10 @@ function CardFace({
         // Placeholder scaffolding — a stripe fill standing in for real media.
         background: stripeFill(project.hue),
         backgroundSize: "420px 100%",
+        // Belt and braces with the overhang above: whatever the clip does not
+        // cover is the page colour rather than a dark edge, so a seam would be
+        // invisible instead of merely thin.
+        backgroundColor: project.hue === undefined ? "var(--page)" : undefined,
       }}
     >
       {wantsVideo ? (
@@ -1281,19 +1543,21 @@ function CardFace({
           playsInline
           preload="metadata"
           style={{
+            // Overhangs by a pixel — see the shot clips below.
             position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
+            top: -1,
+            left: -1,
+            width: "calc(100% + 2px)",
+            height: "calc(100% + 2px)",
             objectFit: "cover",
             display: "block",
           }}
         >
           {project.srcWebm ? (
-            <source src={asset(project.srcWebm)} type="video/webm" />
+            <source src={media(project.srcWebm)} type="video/webm" />
           ) : null}
           {project.src ? (
-            <source src={asset(project.src)} type="video/mp4" />
+            <source src={media(project.src)} type="video/mp4" />
           ) : null}
         </video>
       ) : project.poster ? (
@@ -1304,13 +1568,37 @@ function CardFace({
           draggable={false}
           style={{
             position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
+            top: -1,
+            left: -1,
+            width: "calc(100% + 2px)",
+            height: "calc(100% + 2px)",
             objectFit: "cover",
           }}
         />
       ) : null}
+
+      {/*
+        The shots' own clips, layered over the card.
+
+        Deliberately NOT by swapping the source on the element above: that one
+        came off the deck and is still playing the clip it was playing there,
+        and changing its source would tear that down — which is the one thing
+        this whole layer exists to avoid. It stays as the intro's face and the
+        shots stack on top of it.
+      */}
+      {project.shots.map((shot, k) => {
+        const index = k + 1;
+        if (!shot.src && !shot.srcWebm) return null;
+        if (Math.abs(index - activeShot) > SHOT_WINDOW) return null;
+        return (
+          <ShotClip
+            key={shot.n}
+            shot={shot}
+            active={playing && index === activeShot}
+            visible={index === activeShot}
+          />
+        );
+      })}
 
       {/*
         Depth wash.

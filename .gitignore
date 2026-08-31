@@ -13,3 +13,6 @@ next-env.d.ts
 
 # Static export output
 /out
+
+# Raw camera/screen exports. Compressed copies live in public/media.
+/media-source

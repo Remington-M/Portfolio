@@ -65,6 +65,12 @@ export const SCALE = {
 
 /** The house curve. Every position, size and transform transition uses it. */
 export const HOUSE = [0.2, 0.85, 0.15, 1] as const;
+/**
+ * A gentle, symmetric ease. Equal on both sides, so it leaves and arrives at
+ * the same unhurried rate — which is what the viewer's dip wants: pressed
+ * rather than dropped, and settled rather than stopped.
+ */
+export const GENTLE = [0.33, 0, 0.67, 1] as const;
 export const HOUSE_CSS = "cubic-bezier(.2,.85,.15,1)";
 
 export const DUR = {
@@ -141,6 +147,24 @@ export const SPRING = {
    */
   handoff: springConfig(80, 0.6),
   drop: springConfig(80, 0.6),
+  /**
+   * The project page's viewer changing shape between one clip and the next.
+   *
+   * The frame is a single player that resizes itself to whatever is playing in
+   * it, so the change of shape has to be a move rather than a cut — otherwise
+   * the eye reads two different players rather than one adapting.
+   */
+  morph: springConfig(200, 1),
+  /**
+   * The way back up out of the viewer's dip.
+   *
+   * Only the return is a spring. The way down is a curve against a clock —
+   * see `CASE.bumpDown` — because a spring stiff enough to reach the bottom
+   * promptly then sits there for whatever time is left, and that pause is the
+   * whole difference between a dip and a flinch. Soft and unhurried on the way
+   * back, which is where the weight is.
+   */
+  bumpUp: springConfig(200, 1),
   /** Soft UI moves — ticks, labels. */
   ui: springConfig(400, 1.291, 0.6),
 } as const;
@@ -313,8 +337,44 @@ export const CASE = {
   /**
    * Every device shape bottoms out on this baseline, so frames of different
    * proportions share one bottom edge. Authored against the 900px stage.
+   *
+   * Still used for the intro screen. The shots no longer sit on it — see
+   * `centreY`.
    */
   baseline: 689 / 900,
+  /**
+   * Shots are centred on this line instead of sharing a bottom edge.
+   *
+   * A shared baseline suits frames that are only ever swapped. These are
+   * morphed: one player growing and shrinking, and a shape change reads as one
+   * object changing when it happens around a fixed centre, but as two
+   * different objects when the bottom edge stays put and the top jumps.
+   * Slightly above the middle of the stage to leave the caption room.
+   */
+  centreY: 430 / 900,
+  /** Where the shot title and its meta line sit, clear of the largest frame. */
+  captionY: 762 / 900,
+  /** Space kept either side of the stage, so a wide frame never runs to the edge. */
+  gutter: 96,
+  /**
+   * How far the viewer dips when the next clip is the same shape as the last.
+   *
+   * The morph is what marks a change of shot, and between two clips of matching
+   * proportions it has nothing to do — the frame holds still and the picture
+   * swaps underneath it, which barely registers as a change at all. A short dip
+   * and return gives those a beat of their own, on the same spring, so it reads
+   * as the same viewer reacting rather than as a new effect.
+   */
+  bump: 0.03,
+  /**
+   * How long the viewer takes to sink into that dip, in milliseconds.
+   *
+   * A stated duration rather than a spring, so it is still travelling when it
+   * arrives at the bottom and the spring picks it straight up again. It uses
+   * the house curve, so the descent belongs to the same family as everything
+   * else that eases here.
+   */
+  bumpDown: 300,
   /** Return-to-deck card, and the ghost cards that fan out behind it. */
   returnCard: { w: 260, h: 565, r: 36, top: 96 },
   ghosts: [
@@ -330,17 +390,38 @@ export const CASE = {
 /** Viewport shapes the morphing project frame can take. */
 export type ShotKind = "portrait" | "square" | "desktop" | "landscape";
 
-export function frameBox(kind: ShotKind) {
-  switch (kind) {
-    case "square":
-      return { w: 470, h: 470, pad: 0, r: 20, ir: 20, bar: false };
-    case "desktop":
-      return { w: 680, h: 425, pad: 0, r: 14, ir: 14, bar: true };
-    case "landscape":
-      return { w: 710, h: 400, pad: 0, r: 14, ir: 14, bar: false };
-    default:
-      return { w: 271, h: 589, pad: 8, r: 45, ir: 37, bar: false };
-  }
+/**
+ * The shape the viewer takes for a clip.
+ *
+ * No device frames: no phone bezel, no window title bar. The viewer is a
+ * rounded rectangle holding the footage and nothing else, so `pad` is always
+ * zero and there is no chrome to draw. Dressing a screen recording in a
+ * hardware frame adds a second subject to look at.
+ *
+ * The sizes below set how much room a clip of that sort gets, and its own
+ * proportions do the rest: a tall clip is given a height and takes whatever
+ * width follows, a wide one is given a width and takes the height. Authoring
+ * both numbers is what cropped the footage — the boxes were tidy proportions
+ * and the clips are whatever they are, so five of them lost 12% of the picture
+ * to the difference. `caseFrame` then fits the result inside the stage, so
+ * these can be generous.
+ */
+export function frameBox(kind: ShotKind, aspect?: number) {
+  const box =
+    kind === "square"
+      ? { w: 520, h: 520, pad: 0, r: 22, ir: 22, bar: false }
+      : kind === "desktop"
+        ? { w: 1020, h: 638, pad: 0, r: 18, ir: 18, bar: false }
+        : kind === "landscape"
+          ? { w: 1065, h: 600, pad: 0, r: 18, ir: 18, bar: false }
+          : { w: 300, h: 652, pad: 0, r: 46, ir: 46, bar: false };
+
+  if (!aspect || !Number.isFinite(aspect)) return box;
+  // Tall clips are held to a height, wide ones to a width — whichever is the
+  // dimension actually competing for room on the stage.
+  return aspect < 1.05
+    ? { ...box, w: box.h * aspect, h: box.h }
+    : { ...box, w: box.w, h: box.w / aspect };
 }
 
 /* ------------------------------------------------------------------ *

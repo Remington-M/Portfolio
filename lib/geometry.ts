@@ -395,21 +395,37 @@ export function caseBaseline(stage: Stage): number {
  * landscape frames all share one bottom edge. Past the last shot it interpolates
  * back into a deck card for the return ending.
  */
+/** A shot's shape: the sort of frame it wants, and its true proportions. */
+export type ShotShape = { kind: ShotKind; aspect?: number };
+
 export function caseFrame(
   cp: number,
-  shotKinds: ShotKind[],
+  shapes: ShotShape[],
   stage: Stage,
 ): Geo {
-  const shots = shotKinds.length;
+  const shots = shapes.length;
   const active = clamp(Math.round(cp), 0, shots - 1);
   const s = stage.s;
-  const base = frameBox(shotKinds[active]);
+  const base = frameBox(shapes[active].kind, shapes[active].aspect);
   const r = returnProgress(cp, shots);
   const L = (from: number, to: number) => lerp(from, to, r);
 
   const card = CASE.returnCard;
-  const w = (r > 0 ? L(base.w, card.w) : base.w) * s;
-  const h = (r > 0 ? L(base.h, card.h) : base.h) * s;
+
+  /**
+   * A wide frame is fitted to the stage rather than allowed to run off it.
+   *
+   * The authored sizes are generous on purpose, so the limit has to live here:
+   * whatever comes out of `frameBox` is scaled down, keeping its proportions,
+   * until it sits inside the stage with a gutter either side. That way the
+   * sizes can be chosen for how they read rather than for the narrowest window
+   * they must survive.
+   */
+  const room = Math.max(1, stage.w - CASE.gutter * 2 * s);
+  const fit = Math.min(1, room / (base.w * s));
+
+  const w = (r > 0 ? L(base.w * fit, card.w) : base.w * fit) * s;
+  const h = (r > 0 ? L(base.h * fit, card.h) : base.h * fit) * s;
   const pad = (r > 0 ? L(base.pad, 0) : base.pad) * s;
   const radius = (r > 0 ? L(base.r, card.r) : base.r) * s;
   const innerRadius = (r > 0 ? L(base.ir, card.r) : base.ir) * s;
@@ -420,11 +436,18 @@ export function caseFrame(
   let x: number, y: number;
   if (introScreen) {
     // Intro: parked at the right of the stage, beside the text column.
-    x = stage.w - 200 * s - base.w * s;
+    x = stage.w - 200 * s - base.h * s * (base.w / base.h) * fit;
     y = stageY(stage, 95);
   } else {
     x = stage.w / 2 - w / 2;
-    y = r > 0 ? L(baseline - base.h * s, stageY(stage, card.top)) : baseline - h;
+    /**
+     * Centred, not sat on a baseline. The viewer is one player changing shape
+     * between clips, and that reads as a single object growing and shrinking
+     * only if it changes around a fixed middle — pin the bottom edge instead
+     * and the top jumps, which reads as two different players being swapped.
+     */
+    const centre = stageY(stage, DESKTOP_REF.h * CASE.centreY);
+    y = r > 0 ? L(centre - (base.h * fit * s) / 2, stageY(stage, card.top)) : centre - h / 2;
   }
 
   return {
@@ -444,9 +467,9 @@ export function caseFrame(
   };
 }
 
-/** Does this shot want the desktop-window title bar with its three dots? */
-export function frameHasBar(kind: ShotKind): boolean {
-  return frameBox(kind).bar;
+/** Where the shot title and its meta line sit, clear of the largest frame. */
+export function caseCaption(stage: Stage): number {
+  return stageY(stage, DESKTOP_REF.h * CASE.captionY);
 }
 
 /** Ghost cards that fan out behind the frame during the return ending. */

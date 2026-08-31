@@ -114,6 +114,44 @@ export function isAtRest(s: Spring, target: number): boolean {
   return s.value === target && s.velocity === 0;
 }
 
+/**
+ * A cubic-bezier easing, the same shape a CSS `cubic-bezier()` describes.
+ *
+ * Springs cannot express "take exactly this long": their duration falls out of
+ * the physics. Where a leg of a motion has to be a stated length of time — and
+ * to still be moving when it ends, rather than settling early and waiting —
+ * it has to be a curve against a clock instead.
+ *
+ * The curve gives y for a given x, and x is not the parameter it is defined
+ * against, so this solves for the parameter first. Newton converges in a few
+ * steps over this range.
+ */
+export function cubicBezier(x1: number, y1: number, x2: number, y2: number) {
+  const cx = 3 * x1;
+  const bx = 3 * (x2 - x1) - cx;
+  const ax = 1 - cx - bx;
+  const cy = 3 * y1;
+  const by = 3 * (y2 - y1) - cy;
+  const ay = 1 - cy - by;
+  const xAt = (t: number) => ((ax * t + bx) * t + cx) * t;
+  const yAt = (t: number) => ((ay * t + by) * t + cy) * t;
+  const dxAt = (t: number) => (3 * ax * t + 2 * bx) * t + cx;
+
+  return (x: number): number => {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    let t = x;
+    for (let i = 0; i < 8; i++) {
+      const err = xAt(t) - x;
+      if (Math.abs(err) < 1e-5) break;
+      const slope = dxAt(t);
+      if (Math.abs(slope) < 1e-6) break;
+      t -= err / slope;
+    }
+    return yAt(t);
+  };
+}
+
 /* ------------------------------------------------------------------ *
  * Scalar helpers used across the geometry math
  * ------------------------------------------------------------------ */
