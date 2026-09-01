@@ -118,7 +118,19 @@ export function StageProvider({ children }: { children: ReactNode }) {
   );
 
   const pathname = usePathname();
-  const mode: "home" | "case" = pathname?.startsWith("/work/") ? "case" : "home";
+  /**
+   * Normalised route, without a trailing slash.
+   *
+   * The static export is built with `trailingSlash`, because that is what
+   * serves cleanly from object storage — so in production the path arrives as
+   * `/work/some-project/` while in development it is `/work/some-project`.
+   * Slicing the slug off the raw path therefore left a slash on the end of it
+   * in production only, it matched no project, and the page rendered with
+   * nothing selected: every card in its dropped-away state and no viewer at
+   * all. Trimmed once, here, so neither reader has to know.
+   */
+  const route = (pathname ?? "").replace(/\/+$/, "") || "/";
+  const mode: "home" | "case" = route.startsWith("/work/") ? "case" : "home";
 
   const [viewport, setViewport] = useState({ w: 0, h: 0, mobile: false });
   const [transitionKey, setTransitionKey] = useState(0);
@@ -159,12 +171,12 @@ export function StageProvider({ children }: { children: ReactNode }) {
   // Keep the selected project in sync with the URL, so a deep link or a back
   // button lands with the right card as the shared element.
   useEffect(() => {
-    const slug = pathname?.startsWith("/work/")
-      ? pathname.slice("/work/".length)
+    const slug = route.startsWith("/work/")
+      ? route.slice("/work/".length)
       : null;
     values.selected.set(slug ? projectIndex(slug) : -1);
     setTransitionKey((k) => k + 1);
-  }, [pathname, values.selected]);
+  }, [route, values.selected]);
 
   useEffect(() => {
     const sync = () => {
