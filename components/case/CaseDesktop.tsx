@@ -443,8 +443,7 @@ export default function CaseDesktop({ project }: { project: Project }) {
                 position: "absolute",
                 left: 0,
                 right: 0,
-                // 40, not 46 — six pixels handed up the stack to the caption.
-                bottom: stage.top + 40 * s,
+                bottom: stage.top + CASE.ticksInset * s,
                 zIndex: 70,
                 display: "flex",
                 flexDirection: "column",

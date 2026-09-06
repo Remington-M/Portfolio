@@ -540,11 +540,20 @@ export const CASE = {
    * caption sat almost against the frame, and any change to either value moved
    * that gap without anyone noticing.
    *
-   * Deliberately less than the space BELOW the caption. A caption belongs to
-   * the thing above it, and sitting closer to the frame than to the tick row
-   * is what says so.
+   * Larger than the space BELOW the caption, which is the opposite of what a
+   * caption usually wants. The viewer is 652 tall and there is not room under
+   * it for generous air on both sides, so the caption sits down with the tick
+   * row and the gap it needed is taken off the viewer's edge — where it was
+   * six pixels, and looked it.
    */
   captionGap: 30,
+  /**
+   * How far the tick row sits above the bottom of the stage.
+   *
+   * Was 46. Moving it down is what pays for `captionGap` without touching the
+   * viewer's size.
+   */
+  ticksInset: 22,
   /**
    * How far the shot title travels as it changes, authored against the stage.
    *
@@ -574,20 +583,18 @@ export const CASE = {
    * frame is contained inside BOTH budgets rather than sized by height and then
    * clamped by width.
    *
-   * Set from the bottom up rather than chosen. Below the frame there is a
-   * caption and a tick row, each of which needs room, and what is left over is
-   * what the viewer may occupy:
+   * The viewer gets the room first, and what is below it fits underneath.
    *
-   *     900 − 40 (tick row inset) − 43 (its height)
-   *         − 42 (air) − 32 (caption) − 30 (`captionGap`)   = 713
-   *     (713 − 430 centre) × 2                              = 566
+   * It was briefly cut to 566 to buy the caption some air, which is the wrong
+   * trade: the viewer is the thing being looked at, and shrinking it 13% to
+   * move a 26px line is paying far too much. The air came from moving the
+   * caption and the tick row down instead — see `captionGap`.
    *
-   * It was 652, which put the frame's edge 6px from the caption — see
-   * `captionGap`. Before that the `desktop` frame was 728 and ran 32px PAST
-   * the caption line, so the caption, drawn above the viewer, sat over the
-   * bottom of the footage.
+   * The one thing it must not do is exceed the room: the `desktop` frame was
+   * 728 and ran 32px PAST the caption line, so the caption, drawn above the
+   * viewer, sat over the bottom of the footage.
    */
-  roomH: 566,
+  roomH: 652,
   /**
    * The intro arriving, element by element.
    *
