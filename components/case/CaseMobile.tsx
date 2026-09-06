@@ -185,7 +185,6 @@ export default function CaseMobile({ project }: { project: Project }) {
             key={shot.n}
             index={i + 1}
             title={shot.title}
-            meta={shot.meta}
           />
         ))}
       </div>
@@ -262,7 +261,14 @@ function RailTitle({
 }: {
   index: number;
   title: string;
-  meta: string;
+  /**
+   * Only the overview card carries one, and it is the year.
+   *
+   * The shots used to put their `meta` here — "MANAGE YOUR SPACE · 8S LOOP"
+   * and so on — which said the same thing under every shot in a project and
+   * told you nothing about the one you were looking at.
+   */
+  meta?: string;
 }) {
   const { cp, stage } = useStage();
   const ts = stage.ts;
@@ -284,15 +290,17 @@ function RailTitle({
       >
         {title}
       </div>
-      <div
-        style={{
-          paddingTop: 7,
-          ...typeStyle(TYPE.label, ts),
-          color: "var(--ink-3)",
-        }}
-      >
-        {meta}
-      </div>
+      {meta ? (
+        <div
+          style={{
+            paddingTop: 7,
+            ...typeStyle(TYPE.label, ts),
+            color: "var(--ink-3)",
+          }}
+        >
+          {meta}
+        </div>
+      ) : null}
     </motion.div>
   );
 }

@@ -315,7 +315,9 @@ export default function CaseDesktop({ project }: { project: Project }) {
                 left: 0,
                 right: 0,
                 top: caption,
-                height: 56 * ts,
+                // The title's own line box. It was 56, which left room for a
+                // meta line that is no longer set beneath it.
+                height: 32 * ts,
                 zIndex: 56,
                 textAlign: "center",
                 opacity: chromeOpacity,
@@ -327,7 +329,6 @@ export default function CaseDesktop({ project }: { project: Project }) {
                   index={i + 1}
                   active={active}
                   title={shot.title}
-                  meta={shot.meta}
                 />
               ))}
             </motion.div>
@@ -508,12 +509,10 @@ function ShotTitle({
   index,
   active,
   title,
-  meta,
 }: {
   index: number;
   active: number;
   title: string;
-  meta: string;
 }) {
   const { stage } = useStage();
   const ts = stage.ts;
@@ -551,15 +550,6 @@ function ShotTitle({
         }}
       >
         {title}
-      </div>
-      <div
-        style={{
-          paddingTop: 9 * ts,
-          ...typeStyle(TYPE.label, ts),
-          color: "var(--ink-3)",
-        }}
-      >
-        {meta}
       </div>
     </motion.div>
   );
