@@ -254,6 +254,23 @@ export const projects: Project[] = [
   },
 ];
 
+/**
+ * The title, broken exactly as it is meant to be set.
+ *
+ * One function because two places render it — the ledger row on the home page
+ * and the headline on the project page — and the transition between them is
+ * meant to be the same words travelling rather than one set of words being
+ * replaced by another. If they wrapped differently the line breaks would have
+ * to move mid-flight, which is the one thing a shared element cannot do
+ * without giving the game away.
+ *
+ * So the ledger takes the authored break too, and a project without one is a
+ * single line in both places.
+ */
+export function titleLines(project: Project): readonly string[] {
+  return project.displayTitle ?? [project.title];
+}
+
 export function projectBySlug(slug: string) {
   return projects.find((p) => p.slug === slug);
 }

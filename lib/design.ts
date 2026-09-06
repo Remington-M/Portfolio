@@ -568,6 +568,43 @@ export const CASE = {
    */
   roomH: 652,
   /**
+   * The intro arriving, element by element.
+   *
+   * The screen used to be there the moment the route changed — the card flew
+   * in from the deck and the whole column of type was simply already present
+   * behind it, which reads as the page having been waiting rather than being
+   * built. Everything here is about order: what arrives, in what sequence, and
+   * how far behind the thing before it.
+   *
+   * The title is deliberately absent from this list. It is the one piece that
+   * does not fade in, because it is the same words that were in the ledger a
+   * moment ago and should travel rather than appear.
+   */
+  enter: {
+    /**
+     * How long the column waits before anything starts.
+     *
+     * The card is still crossing the page at this point. Starting underneath
+     * it puts two things in motion at once and the eye picks the bigger one,
+     * so the type would arrive unwatched.
+     */
+    lead: 160,
+    /** Between one element and the next. */
+    stagger: 90,
+    /** A fade and its rise. */
+    ms: 420,
+    /** How far a fading element comes up from, in authored px. */
+    rise: 10,
+    /**
+     * The rule drawing itself out of its own middle.
+     *
+     * Slower than a fade and on its own timing: it is a line being drawn, and
+     * a drawn line that finishes at the same moment as the text either side of
+     * it reads as a box appearing rather than a stroke.
+     */
+    ruleMs: 560,
+  },
+  /**
    * The intro screen's horizontal frame.
    *
    * Everything on this screen used to sit at a different distance from its own

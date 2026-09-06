@@ -6,7 +6,15 @@ import { motion, useMotionValueEvent, useTransform, useReducedMotion } from "mot
 import { useStage } from "@/components/media/stage";
 import Header from "@/components/Header";
 import Ticks from "@/components/Ticks";
-import { CASE, HOUSE_CSS, SHADOW, SPRING, TYPE, type as typeStyle } from "@/lib/design";
+import {
+  CASE,
+  HOUSE,
+  HOUSE_CSS,
+  SHADOW,
+  SPRING,
+  TYPE,
+  type as typeStyle,
+} from "@/lib/design";
 import {
   caseBaseline,
   caseCaption,
@@ -16,7 +24,7 @@ import {
   stageY,
 } from "@/lib/geometry";
 import { clamp, clamp01 } from "@/lib/spring";
-import type { Project } from "@/lib/projects";
+import { titleLines, type Project } from "@/lib/projects";
 
 /**
  * Desktop project page.
@@ -111,7 +119,27 @@ export default function CaseDesktop({ project }: { project: Project }) {
   }, [cp, jump, shotCount]);
 
   const kicker = `${project.title} · ${project.yearLong ?? project.year}`.toUpperCase();
-  const titleLines = project.displayTitle ?? [project.title];
+  const lines = titleLines(project);
+
+  /**
+   * One element of the intro arriving: up and in, `step` places down the order.
+   *
+   * Spread rather than wrapped in a component so each element keeps its own
+   * `style` — these are laid out by the column they sit in, and putting a
+   * wrapper around each one would change that layout to animate it.
+   */
+  const rise = (step: number) =>
+    reduced
+      ? {}
+      : {
+          initial: { opacity: 0, y: CASE.enter.rise * stage.s },
+          animate: { opacity: 1, y: 0 },
+          transition: {
+            duration: CASE.enter.ms / 1000,
+            delay: (CASE.enter.lead + step * CASE.enter.stagger) / 1000,
+            ease: [...HOUSE] as [number, number, number, number],
+          },
+        };
 
   return (
     <div
@@ -144,8 +172,15 @@ export default function CaseDesktop({ project }: { project: Project }) {
           >
             <Header variant="case" kicker={kicker} />
 
-            {/* Screen 01 — intro. */}
+            {/*
+              Screen 01 — intro.
+
+              Keyed on the project so the arrival sequence below replays for
+              each one. Without it the column mounts once and every project
+              after the first would find its type already in place.
+            */}
             <motion.div
+              key={project.slug}
               style={{
                 position: "absolute",
                 left: CASE.intro.rail * stage.sx,
@@ -164,13 +199,14 @@ export default function CaseDesktop({ project }: { project: Project }) {
                   textWrap: "pretty",
                 }}
               >
-                {titleLines.map((line, i) => (
+                {lines.map((line, i) => (
                   <span key={i} style={{ display: "block" }}>
                     {line}
                   </span>
                 ))}
               </h1>
-              <div
+              <motion.div
+                {...rise(0)}
                 style={{
                   ...typeStyle(TYPE.body, ts),
                   color: "var(--ink-2)",
@@ -180,14 +216,39 @@ export default function CaseDesktop({ project }: { project: Project }) {
                 }}
               >
                 {project.overview}
-              </div>
-              <dl
+              </motion.div>
+              {/*
+                The rule, drawn from its middle outwards.
+
+                Its own element rather than a `border-top`, because a border
+                cannot be transformed — it can only fade, and a line that fades
+                up at full width is a line that was already there. Scaling from
+                the centre is the difference between a rule appearing and a
+                rule being drawn.
+              */}
+              <motion.div
+                aria-hidden
+                initial={reduced ? false : { scaleX: 0 }}
+                animate={{ scaleX: 1 }}
+                transition={{
+                  duration: CASE.enter.ruleMs / 1000,
+                  delay: (CASE.enter.lead + CASE.enter.stagger) / 1000,
+                  ease: [...HOUSE] as [number, number, number, number],
+                }}
+                style={{
+                  height: 1,
+                  marginTop: 34 * ts,
+                  background: "var(--rule)",
+                  transformOrigin: "50% 50%",
+                }}
+              />
+              <motion.dl
+                {...rise(2)}
                 style={{
                   display: "flex",
                   gap: 32 * ts,
-                  margin: `${34 * ts}px 0 0`,
+                  margin: 0,
                   padding: `${26 * ts}px 0 0`,
-                  borderTop: "1px solid var(--rule)",
                   ...typeStyle(TYPE.value, ts),
                   color: "var(--ink-2)",
                 }}
@@ -206,7 +267,7 @@ export default function CaseDesktop({ project }: { project: Project }) {
                   </dt>
                   <dd style={{ margin: 0 }}>{project.collaborators}</dd>
                 </div>
-              </dl>
+              </motion.dl>
             </motion.div>
 
             {/* Ghost cards fanning out behind the frame as it becomes a card. */}

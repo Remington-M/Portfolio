@@ -1,7 +1,7 @@
 "use client";
 
 import { HOUSE_CSS, TYPE, type as typeStyle } from "@/lib/design";
-import { projects } from "@/lib/projects";
+import { projects, titleLines } from "@/lib/projects";
 import { useStage } from "@/components/media/stage";
 
 /**
@@ -64,7 +64,11 @@ export default function Ledger({
                   transition: `font-size .45s ${HOUSE_CSS}, color .35s ease, letter-spacing .45s ease`,
                 }}
               >
-                {project.title}
+                {titleLines(project).map((line, k) => (
+                  <span key={k} style={{ display: "block" }}>
+                    {line}
+                  </span>
+                ))}
               </span>
               <span
                 style={{
