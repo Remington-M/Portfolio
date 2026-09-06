@@ -228,12 +228,17 @@ export const projects: Project[] = [
   },
   {
     slug: "google-pixel",
-    title: "Google Pixel",
+    title: "Google Pixel & Android",
     displayTitle: ["Google Pixel", "& Android"],
-    year: "2018",
-    yearLong: "2016 — 2020",
+    /**
+     * One title and one date string, used by the ledger, the kicker, the YEAR
+     * field and the page <title>. The ledger used to say "Google Pixel, 2018"
+     * while the case page said "Google Pixel & Android, 2016–2020".
+     */
+    year: "2016\u20132020",
+    yearLong: "2016\u20132020",
     overview:
-      "I had the privilege to work on the Pixel 1-5. Getting to build the foundation for Google's phone with a small design team was a highlight of my career.\n\nI was responsible for core system transitions, Google Assistant & Search integrations, branded moments, core infrastructure, physics based motion and much more!",
+      "I had the privilege to work on the Pixel\u00a01\u20135. Getting to build the foundation for Google\u2019s phone with a small design team was a highlight of my career.\n\nI was responsible for core system transitions, Google Assistant & Search integrations, branded moments, core infrastructure, physics based motion and much more!",
     collaborators: "Name Surname, Name Surname, Name Surname",
     hue: 80,
     shots: [

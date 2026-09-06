@@ -1,21 +1,18 @@
 import type { Metadata, Viewport } from "next";
-import { Archivo, IBM_Plex_Mono } from "next/font/google";
+import { IBM_Plex_Mono } from "next/font/google";
 import { StageProvider } from "@/components/media/stage";
 import MediaLayer from "@/components/media/MediaLayer";
 import TunePanel from "@/components/TunePanel";
 import "./globals.css";
 
 /**
- * next/font downloads and self-hosts these at build time, so there is no
+ * next/font downloads and self-hosts this at build time, so there is no
  * request to Google at runtime and no flash of unstyled text.
+ *
+ * The sans is not here: Söhne is licensed and self-hosted from
+ * `public/fonts/`, declared as @font-face in `globals.css`. Archivo used to
+ * be loaded here and is gone.
  */
-const archivo = Archivo({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-archivo",
-  display: "swap",
-});
-
 const plexMono = IBM_Plex_Mono({
   subsets: ["latin"],
   weight: ["400", "500"],
@@ -26,7 +23,7 @@ const plexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "Remington McElhaney — Motion Design",
   description:
-    "Hey, I'm Remington and I make software come to life with motion.",
+    "Hey, I\u2019m Remington and I make software come to life with motion.",
 };
 
 export const viewport: Viewport = {
@@ -43,7 +40,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${archivo.variable} ${plexMono.variable}`}>
+    <html lang="en" className={plexMono.variable}>
       <body>
         <StageProvider>
           {children}

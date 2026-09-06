@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion, useTransform, useReducedMotion } from "motion/react";
 import { useStage } from "@/components/media/stage";
 import Header from "@/components/Header";
-import { CASE, SHADOW } from "@/lib/design";
+import { CASE, SHADOW, TYPE, type as typeStyle } from "@/lib/design";
 import { railPadding, railPitch } from "@/lib/geometry";
 import { clamp01 } from "@/lib/spring";
 import type { Project } from "@/lib/projects";
@@ -98,6 +98,29 @@ export default function CaseMobile({ project }: { project: Project }) {
             radius={CASE.mobile.r * s}
             reduced={reduced}
           >
+            {/*
+              The shot number, over footage.
+
+              Solid white on a scrim rather than a translucent white. Alpha
+              text hands its contrast to whatever is playing underneath — the
+              number was legible over a dark frame and gone over a bright one,
+              and it changes from frame to frame. The gradient darkens the
+              footage instead, so the type stays at full strength and the
+              contrast is something the page controls rather than the clip.
+            */}
+            <div
+              aria-hidden
+              style={{
+                position: "absolute",
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: 72,
+                background:
+                  "linear-gradient(to top, oklch(0.18 0.006 60 / 0.55), transparent)",
+                pointerEvents: "none",
+              }}
+            />
             <span
               style={{
                 position: "absolute",
@@ -105,10 +128,8 @@ export default function CaseMobile({ project }: { project: Project }) {
                 right: 0,
                 bottom: 18,
                 textAlign: "center",
-                fontFamily: "var(--font-mono)",
-                fontSize: 9.5 * ts,
-                letterSpacing: "0.14em",
-                color: "oklch(0.98 0 0 / 0.24)",
+                ...typeStyle(TYPE.label, ts),
+                color: "var(--ink-on-media)",
               }}
             >
               {shot.n}
@@ -133,12 +154,8 @@ export default function CaseMobile({ project }: { project: Project }) {
               top: "50%",
               transform: "translateY(-50%)",
               textAlign: "center",
-              fontFamily: "var(--font-mono)",
-              fontSize: 9.5 * ts,
-              letterSpacing: "0.14em",
-              // Page text, so it has to follow the theme.
-              color: "var(--ink)",
-              opacity: 0.6,
+              ...typeStyle(TYPE.label, ts),
+              color: "var(--ink-3)",
             }}
           >
             RETURN TO WORK
@@ -224,7 +241,7 @@ function RailCard({
         background: light ? "var(--return-card)" : "var(--shot-empty)",
         boxShadow: light
           ? "inset 0 0 0 1px var(--frame-edge)"
-          : SHADOW.carousel,
+          : SHADOW.cardFront,
         transformOrigin: "50% 50%",
         cursor: onClick ? "pointer" : "default",
         rotate,
@@ -260,11 +277,9 @@ function RailTitle({
     >
       <div
         style={{
-          fontFamily: "var(--font-display)",
-          fontWeight: 400,
-          fontSize: 21 * ts,
-          lineHeight: 1.14,
-          letterSpacing: "-0.026em",
+          ...typeStyle(TYPE.titleMMobile, ts),
+          color: "var(--ink)",
+          textWrap: "pretty",
         }}
       >
         {title}
@@ -272,11 +287,8 @@ function RailTitle({
       <div
         style={{
           paddingTop: 7,
-          fontFamily: "var(--font-mono)",
-          fontSize: 9 * ts,
-          lineHeight: 1,
-          letterSpacing: "0.11em",
-          opacity: 0.4,
+          ...typeStyle(TYPE.label, ts),
+          color: "var(--ink-3)",
         }}
       >
         {meta}

@@ -13,7 +13,7 @@ import Header from "@/components/Header";
 import Ledger from "./Ledger";
 import Ticks from "@/components/Ticks";
 import { projects } from "@/lib/projects";
-import { DECK, DECK_MOTION } from "@/lib/design";
+import { DECK, DECK_MOTION, TYPE, type as typeStyle } from "@/lib/design";
 import { clamp01 } from "@/lib/spring";
 import { frontIndex, stageY } from "@/lib/geometry";
 
@@ -408,11 +408,13 @@ export default function Home() {
                   margin: 0,
                   maxWidth: mobile ? "none" : 760 * ts,
                   textAlign: "center",
-                  fontFamily: "var(--font-display)",
-                  fontWeight: 400,
-                  fontSize: (mobile ? 26 : 42) * ts,
-                  lineHeight: mobile ? 1.28 : `${50.81 * ts}px`,
-                  letterSpacing: mobile ? "-0.026em" : "-0.03em",
+                  /**
+                   * One role either way. The desktop line-height was written
+                   * twice — a unitless 1.18 and a `50.81px` override sitting
+                   * next to it — and the override is gone.
+                   */
+                  ...typeStyle(mobile ? TYPE.heroMobile : TYPE.hero, ts),
+                  color: "var(--ink)",
                   textWrap: "pretty",
                 }}
               >
@@ -439,22 +441,16 @@ export default function Home() {
               >
                 <div
                   style={{
-                    fontFamily: "var(--font-display)",
-                    fontWeight: 400,
-                    fontSize: 22 * ts,
-                    lineHeight: 1.14,
-                    letterSpacing: "-0.026em",
+                    ...typeStyle(TYPE.titleMMobile, ts),
+                    color: "var(--ink)",
                   }}
                 >
                   {projects[front].title}
                 </div>
                 <div
                   style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 9.5 * ts,
-                    lineHeight: 1,
-                    letterSpacing: "0.11em",
-                    opacity: 0.42,
+                    ...typeStyle(TYPE.numeral, ts),
+                    color: "var(--ink-3)",
                   }}
                 >
                   {projects[front].year}

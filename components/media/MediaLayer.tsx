@@ -2190,13 +2190,25 @@ function CardFace({
          * standing in for real media, with the page colour behind it so a seam
          * at the edge is invisible rather than merely thin.
          */
-        background: viewer ? "var(--viewer)" : stripeFill(project.hue),
-        backgroundSize: viewer ? undefined : "420px 100%",
+        /**
+         * Long-hand, never the `background` shorthand.
+         *
+         * The two were mixed here — a shorthand and a `backgroundColor`
+         * alongside it — which React warns about and is right to: the
+         * shorthand resets the colour, so which one wins came down to the
+         * order the object happened to be written in.
+         */
         backgroundColor: viewer
-          ? undefined
+          ? "var(--viewer)"
           : project.hue === undefined
-            ? "var(--page)"
+            ? "var(--shot-empty)"
+            : "var(--page)",
+        backgroundImage:
+          !viewer && project.hue !== undefined
+            ? stripeFill(project.hue)
             : undefined,
+        backgroundSize:
+          !viewer && project.hue !== undefined ? "420px 100%" : undefined,
       }}
     >
       {/*

@@ -1,6 +1,6 @@
 "use client";
 
-import { HOUSE_CSS } from "@/lib/design";
+import { HOUSE_CSS, TYPE, type as typeStyle } from "@/lib/design";
 import { projects } from "@/lib/projects";
 import { useStage } from "@/components/media/stage";
 
@@ -53,27 +53,24 @@ export default function Ledger({
             >
               <span
                 style={{
-                  fontFamily: "var(--font-display)",
-                  fontWeight: 400,
-                  fontSize: (on ? 28 : 20) * ts,
-                  lineHeight: 1.1,
-                  letterSpacing: on ? "-0.032em" : "-0.024em",
-                  opacity: on ? 1 : 0.36,
-                  transition: `font-size .45s ${HOUSE_CSS}, opacity .35s ease, letter-spacing .45s ease`,
+                  /**
+                   * Two roles, not one role at two opacities. Title L and
+                   * Title S differ in size and tracking; the difference
+                   * between active and resting is now carried by ink rather
+                   * than by making the resting rows transparent.
+                   */
+                  ...typeStyle(on ? TYPE.titleL : TYPE.titleS, ts),
+                  color: on ? "var(--ink)" : "var(--ink-3)",
+                  transition: `font-size .45s ${HOUSE_CSS}, color .35s ease, letter-spacing .45s ease`,
                 }}
               >
                 {project.title}
               </span>
               <span
                 style={{
-                  fontFamily: "var(--font-mono)",
-                  fontWeight: 400,
-                  fontSize: 9.5 * ts,
-                  lineHeight: 1,
-                  fontVariantNumeric: "tabular-nums",
-                  letterSpacing: "0.09em",
-                  opacity: on ? 0.5 : 0.2,
-                  transition: "opacity .35s ease",
+                  ...typeStyle(TYPE.numeral, ts),
+                  color: on ? "var(--ink-2)" : "var(--ink-4)",
+                  transition: "color .35s ease",
                 }}
               >
                 {project.year}

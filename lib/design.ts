@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { springConfig } from "./spring";
 
 /**
@@ -6,6 +7,73 @@ import { springConfig } from "./spring";
  * Numbers here are authored values from the prototypes — treat this file as the
  * single source of truth and change geometry here rather than in components.
  */
+
+/* ------------------------------------------------------------------ *
+ * Type
+ *
+ * The whole scale, and the only combinations allowed. Sizes used to live
+ * inline in six components, which is how the site ended up with six mono
+ * sizes and eleven tracking values for what is really three mono roles and
+ * seven sans ones. A role here is a complete instruction — size, leading,
+ * weight, tracking, and the case and numeral behaviour that go with it — so
+ * a component picks a role rather than assembling one.
+ *
+ * Sizes are authored against the 1440x900 stage and multiplied by the type
+ * scale at the point of use, exactly as the geometry is.
+ * ------------------------------------------------------------------ */
+export type TypeRole = {
+  size: number;
+  line: number;
+  weight: 400 | 500;
+  track: string;
+  mono?: true;
+  upper?: true;
+  tabular?: true;
+};
+
+export const TYPE = {
+  /** Case study title. */
+  display: { size: 56, line: 1.02, weight: 400, track: "-0.035em" },
+  /** Home hero sentence. */
+  hero: { size: 42, line: 1.18, weight: 400, track: "-0.025em" },
+  heroMobile: { size: 26, line: 1.28, weight: 400, track: "-0.025em" },
+  /** Active ledger row. */
+  titleL: { size: 28, line: 1.1, weight: 400, track: "-0.025em" },
+  /** Shot captions. */
+  titleM: { size: 26, line: 1.14, weight: 400, track: "-0.02em" },
+  /**
+   * The mobile "now" title and mobile captions, which were 21 and 22 and a
+   * different tracking each. One role at one size.
+   */
+  titleMMobile: { size: 22, line: 1.14, weight: 400, track: "-0.02em" },
+  /** Inactive ledger rows. */
+  titleS: { size: 20, line: 1.1, weight: 400, track: "-0.02em" },
+  /** Case study overview. Held to `CASE.intro.colWidth`, about 55 characters. */
+  body: { size: 18, line: 1.55, weight: 400, track: "0" },
+  /** The name in the nav, and the only sans 500 on the site. */
+  navName: { size: 15, line: 1, weight: 500, track: "-0.01em" },
+
+  /* Mono is one size. Nav links, back link, kickers, field headings, caption
+   * meta and the page index are all the same thing at the same weight. */
+  label: { size: 11, line: 1, weight: 500, track: "0.1em", mono: true, upper: true },
+  /** What sits under a field heading. Mixed case, so it reads as content. */
+  value: { size: 11, line: 1.7, weight: 400, track: "0.04em", mono: true },
+  /** Years and indices. Tabular, so a changing number does not jitter. */
+  numeral: { size: 11, line: 1, weight: 400, track: "0.08em", mono: true, tabular: true },
+} as const satisfies Record<string, TypeRole>;
+
+/** A role, resolved at the current type scale. Spread into a `style`. */
+export function type(role: TypeRole, ts = 1): CSSProperties {
+  return {
+    fontFamily: role.mono ? "var(--font-mono)" : "var(--font-sans)",
+    fontSize: role.size * ts,
+    lineHeight: role.line,
+    fontWeight: role.weight,
+    letterSpacing: role.track,
+    ...(role.upper ? { textTransform: "uppercase" as const } : null),
+    ...(role.tabular ? { fontVariantNumeric: "tabular-nums" } : null),
+  };
+}
 
 /* ------------------------------------------------------------------ *
  * The card ratio rule
@@ -249,9 +317,16 @@ export const edgeColour = (alpha: number) =>
 export const SHADOW = {
   cardFront: deckShadow(true),
   cardBack: deckShadow(false),
+  /**
+   * The viewer is not a card, and keeps its own.
+   *
+   * Everything else that is card-shaped now uses `cardFront` or `cardBack`:
+   * the mobile carousel had a third value and the ghost fan a fourth, all
+   * within a few percent of each other and of these two, which is four ways of
+   * saying the same thing. A single object alone on an empty stage genuinely
+   * does need a wider, softer shadow than one card in a pile, so this stays.
+   */
   device: `0 36px 70px -34px ${castColour(0.5)}`,
-  carousel: `0 24px 48px -24px ${castColour(0.42)}, inset 0 0 0 1px ${edgeColour(0.09)}`,
-  ghost: `0 30px 60px -34px ${castColour(0.45)}`,
 } as const;
 
 /* ------------------------------------------------------------------ *
@@ -695,7 +770,12 @@ export const CASE = {
     maxPx: 26,
   },
   /** Return-to-deck card, and the ghost cards that fan out behind it. */
-  returnCard: { w: 260, h: 565, r: 36, top: 96 },
+  /**
+   * A desktop card, so it takes the desktop card radius — 44, the same as the
+   * deck's own (`RADIUS_RATIO` lands on 44.05 at the reference width) and the
+   * same as the portrait viewer. It was 36, which is the mobile value.
+   */
+  returnCard: { w: 260, h: 565, r: 44, top: 96 },
   ghosts: [
     { dx: 0, dy: 0, rot: 0, scale: 1 },
     { dx: -46, dy: 16, rot: -5.5, scale: 0.94 },
@@ -703,7 +783,8 @@ export const CASE = {
     { dx: -18, dy: 46, rot: -2.5, scale: 0.83 },
   ],
   /** Mobile carousel. */
-  mobile: { w: 280, h: 609, r: 38, top: 106, gap: 14 },
+  /** The mobile card. 36, not 38 — one radius for this object everywhere. */
+  mobile: { w: 280, h: 609, r: 36, top: 106, gap: 14 },
 } as const;
 
 /** Viewport shapes the morphing project frame can take. */
@@ -724,6 +805,15 @@ export type ShotKind = "portrait" | "square" | "desktop" | "landscape";
  * and the clips are whatever they are, so five of them lost 12% of the picture
  * to the difference. `caseFrame` then fits the result inside the stage, so
  * these can be generous.
+ *
+ * The portrait radius is 44 — the desktop card radius, shared with the deck
+ * and the return card, because all three are the same phone. It was 46, which
+ * was a fourth value for one shape.
+ *
+ * The window shapes keep their own smaller radii. They are not phones: a
+ * desktop recording in a 44px-rounded box reads as a phone showing a website.
+ * `ir` equals `r` throughout because `pad` is 0 — there is no bezel to have an
+ * inner corner inside of.
  */
 export function frameBox(kind: ShotKind, aspect?: number) {
   const box =
@@ -733,7 +823,7 @@ export function frameBox(kind: ShotKind, aspect?: number) {
         ? { w: 1020, h: 638, pad: 0, r: 18, ir: 18, bar: false }
         : kind === "landscape"
           ? { w: 1065, h: 600, pad: 0, r: 18, ir: 18, bar: false }
-          : { w: 300, h: 652, pad: 0, r: 46, ir: 46, bar: false };
+          : { w: 300, h: 652, pad: 0, r: 44, ir: 44, bar: false };
 
   if (!aspect || !Number.isFinite(aspect)) return box;
   // Tall clips are held to a height, wide ones to a width — whichever is the

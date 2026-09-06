@@ -2,14 +2,7 @@
 
 import Link from "next/link";
 import { useStage } from "./media/stage";
-import { CASE } from "@/lib/design";
-
-const mono = {
-  fontFamily: "var(--font-mono)",
-  fontWeight: 500,
-  letterSpacing: "0.06em",
-  textTransform: "uppercase" as const,
-};
+import { CASE, TYPE, type as typeStyle } from "@/lib/design";
 
 export default function Header({
   variant,
@@ -30,72 +23,65 @@ export default function Header({
     ? `${stage.top + 22 * stage.s}px ${24 * stage.sx}px`
     : `${stage.top + 28 * stage.s}px ${sideX}px`;
 
+  /**
+   * One header, both pages.
+   *
+   * The two used to be separate layouts with separate type: the case variant
+   * ran mono 10px/400 at half opacity, the home variant mono 12px/500 with a
+   * 15px 600 name beside it. Same bar, same job, three sizes and two weights
+   * between them. They share a frame now, and the only difference is what
+   * sits on the left — the name, or the way back.
+   */
+  const frame: React.CSSProperties = {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    zIndex: 70,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    gap: 22 * ts,
+    padding: pad,
+  };
+
   if (variant === "case") {
     return (
-      <header
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          top: 0,
-          zIndex: 70,
-          display: "flex",
-          alignItems: "baseline",
-          gap: 22 * ts,
-          padding: pad,
-          fontFamily: "var(--font-mono)",
-          fontWeight: 400,
-          fontSize: 10 * ts,
-          letterSpacing: "0.1em",
-        }}
-      >
-        <Link href="/" style={{ opacity: 0.5 }}>
-          ← WORK
-        </Link>
-        {kicker ? <span style={{ opacity: 0.3 }}>{kicker}</span> : null}
+      <header style={frame}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 22 * ts }}>
+          {/* U+2190, then an ordinary space — not a glyph with padding. */}
+          <Link href="/" style={{ ...typeStyle(TYPE.label, ts), color: "var(--ink-3)" }}>
+            ← WORK
+          </Link>
+          {kicker ? (
+            <span style={{ ...typeStyle(TYPE.label, ts), color: "var(--ink-3)" }}>
+              {kicker}
+            </span>
+          ) : null}
+        </div>
       </header>
     );
   }
 
   return (
-    <header
-      style={{
-        position: "absolute",
-        left: 0,
-        right: 0,
-        top: 0,
-        zIndex: 70,
-        display: "flex",
-        justifyContent: mobile ? "flex-end" : "space-between",
-        alignItems: "baseline",
-        padding: pad,
-      }}
-    >
+    <header style={frame}>
       {/* The name is deliberately absent on mobile. */}
       {!mobile ? (
-        <div
-          style={{
-            fontFamily: "var(--font-display)",
-            fontWeight: 600,
-            fontSize: 15 * ts,
-            lineHeight: 1,
-            letterSpacing: "-0.01em",
-          }}
-        >
+        <div style={{ ...typeStyle(TYPE.navName, ts), color: "var(--ink)" }}>
           Remington McElhaney
         </div>
-      ) : null}
+      ) : (
+        <span />
+      )}
       <nav
         style={{
-          ...mono,
+          ...typeStyle(TYPE.label, ts),
           display: "flex",
           gap: (mobile ? 16 : 26) * ts,
-          fontSize: (mobile ? 10 : 12) * ts,
-          lineHeight: 1,
         }}
       >
-        <span>Work</span>
-        <span style={{ opacity: 0.42 }}>About</span>
+        <span style={{ color: "var(--ink)" }}>Work</span>
+        <span style={{ color: "var(--ink-3)" }}>About</span>
       </nav>
     </header>
   );

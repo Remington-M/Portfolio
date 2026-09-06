@@ -6,7 +6,7 @@ import { motion, useMotionValueEvent, useTransform, useReducedMotion } from "mot
 import { useStage } from "@/components/media/stage";
 import Header from "@/components/Header";
 import Ticks from "@/components/Ticks";
-import { CASE, HOUSE_CSS, SHADOW, SPRING } from "@/lib/design";
+import { CASE, HOUSE_CSS, SHADOW, SPRING, TYPE, type as typeStyle } from "@/lib/design";
 import {
   caseBaseline,
   caseCaption,
@@ -159,11 +159,9 @@ export default function CaseDesktop({ project }: { project: Project }) {
               <h1
                 style={{
                   margin: 0,
-                  fontFamily: "var(--font-display)",
-                  fontWeight: 400,
-                  fontSize: 56 * ts,
-                  lineHeight: 1.02,
-                  letterSpacing: "-0.04em",
+                  ...typeStyle(TYPE.display, ts),
+                  color: "var(--ink)",
+                  textWrap: "pretty",
                 }}
               >
                 {titleLines.map((line, i) => (
@@ -174,11 +172,8 @@ export default function CaseDesktop({ project }: { project: Project }) {
               </h1>
               <div
                 style={{
-                  fontFamily: "var(--font-display)",
-                  fontWeight: 400,
-                  fontSize: 18 * ts,
-                  lineHeight: 1.55,
-                  opacity: 0.66,
+                  ...typeStyle(TYPE.body, ts),
+                  color: "var(--ink-2)",
                   paddingTop: 26 * ts,
                   textWrap: "pretty",
                   whiteSpace: "pre-line",
@@ -192,22 +187,23 @@ export default function CaseDesktop({ project }: { project: Project }) {
                   gap: 32 * ts,
                   margin: `${34 * ts}px 0 0`,
                   padding: `${26 * ts}px 0 0`,
-                  borderTop: "1px solid var(--hairline)",
-                  fontFamily: "var(--font-mono)",
-                  fontWeight: 400,
-                  fontSize: 9.5 * ts,
-                  lineHeight: 1.8,
-                  letterSpacing: "0.06em",
+                  borderTop: "1px solid var(--rule)",
+                  ...typeStyle(TYPE.value, ts),
+                  color: "var(--ink-2)",
                 }}
               >
                 {/* Role is deliberately absent — it never varies across
                     projects and belongs on the About page. */}
                 <div style={{ flex: "0 0 auto" }}>
-                  <dt style={{ opacity: 0.42 }}>YEAR</dt>
+                  <dt style={{ ...typeStyle(TYPE.label, ts), color: "var(--ink-3)" }}>
+                    YEAR
+                  </dt>
                   <dd style={{ margin: 0 }}>{project.yearLong ?? project.year}</dd>
                 </div>
                 <div style={{ flex: `1 1 ${190 * ts}px`, minWidth: 0 }}>
-                  <dt style={{ opacity: 0.42 }}>COLLABORATORS</dt>
+                  <dt style={{ ...typeStyle(TYPE.label, ts), color: "var(--ink-3)" }}>
+                    COLLABORATORS
+                  </dt>
                   <dd style={{ margin: 0 }}>{project.collaborators}</dd>
                 </div>
               </dl>
@@ -235,7 +231,7 @@ export default function CaseDesktop({ project }: { project: Project }) {
                       height: g.h,
                       borderRadius: g.radius,
                       background: "var(--ghost)",
-                      boxShadow: SHADOW.ghost,
+                      boxShadow: SHADOW.cardBack,
                       opacity: g.opacity,
                       transform: `translateX(calc(-50% + ${g.dx}px)) translateY(${g.dy}px) rotate(${g.rotate}deg) scale(${g.scale})`,
                     }}
@@ -283,10 +279,8 @@ export default function CaseDesktop({ project }: { project: Project }) {
               <Link
                 href="/"
                 style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 10 * ts,
-                  letterSpacing: "0.14em",
-                  opacity: 0.55,
+                  ...typeStyle(TYPE.label, ts),
+                  color: "var(--ink-3)",
                 }}
               >
                 RETURN TO WORK
@@ -343,11 +337,8 @@ export default function CaseDesktop({ project }: { project: Project }) {
               />
               <div
                 style={{
-                  fontFamily: "var(--font-mono)",
-                  fontSize: 9 * ts,
-                  letterSpacing: "0.12em",
-                  opacity: 0.34,
-                  fontVariantNumeric: "tabular-nums",
+                  ...typeStyle(TYPE.numeral, ts),
+                  color: "var(--ink-3)",
                 }}
               >
                 {String(active + 1).padStart(2, "0")} /{" "}
@@ -486,11 +477,9 @@ function ShotTitle({
     >
       <div
         style={{
-          fontFamily: "var(--font-display)",
-          fontWeight: 400,
-          fontSize: 26 * ts,
-          lineHeight: 1.14,
-          letterSpacing: "-0.028em",
+          ...typeStyle(TYPE.titleM, ts),
+          color: "var(--ink)",
+          textWrap: "pretty",
         }}
       >
         {title}
@@ -498,11 +487,8 @@ function ShotTitle({
       <div
         style={{
           paddingTop: 9 * ts,
-          fontFamily: "var(--font-mono)",
-          fontSize: 9.5 * ts,
-          lineHeight: 1,
-          letterSpacing: "0.11em",
-          opacity: 0.4,
+          ...typeStyle(TYPE.label, ts),
+          color: "var(--ink-3)",
         }}
       >
         {meta}
