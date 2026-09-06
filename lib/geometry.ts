@@ -523,7 +523,16 @@ export function caseFrame(
 
 /** Where the shot title and its meta line sit, clear of the largest frame. */
 export function caseCaption(stage: Stage): number {
-  return stageY(stage, DESKTOP_REF.h * CASE.captionY);
+  /**
+   * Derived from where the viewer actually ends, not authored beside it.
+   *
+   * The frame is centred on `centreY` and may be `roomH` tall, so its lowest
+   * possible edge is a fixed distance below that line — and the caption is
+   * `captionGap` below THAT. Written as its own fraction of the stage the two
+   * drifted: whatever `roomH` became, the caption stayed where it was.
+   */
+  const bottom = DESKTOP_REF.h * CASE.centreY + CASE.roomH / 2;
+  return stageY(stage, bottom + CASE.captionGap);
 }
 
 /** Ghost cards that fan out behind the frame during the return ending. */

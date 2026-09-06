@@ -525,7 +525,20 @@ export const CASE = {
    */
   centreY: 430 / 900,
   /** Where the shot title and its meta line sit, clear of the largest frame. */
-  captionY: 762 / 900,
+  /**
+   * Air between the bottom of the viewer and the top of its caption.
+   *
+   * The caption's position is derived from this and `roomH` rather than
+   * authored — see `caseCaption`. The two used to be independent numbers that
+   * happened to land 6px apart, which is not a decision anyone made: the
+   * caption sat almost against the frame, and any change to either value moved
+   * that gap without anyone noticing.
+   *
+   * Deliberately less than the space BELOW the caption. A caption belongs to
+   * the thing above it, and sitting closer to the frame than to the tick row
+   * is what says so.
+   */
+  captionGap: 30,
   /**
    * How far the shot title travels as it changes, authored against the stage.
    *
@@ -555,18 +568,20 @@ export const CASE = {
    * frame is contained inside BOTH budgets rather than sized by height and then
    * clamped by width.
    *
-   * Twice the distance from the shots' centre line (`centreY`, 430) to the
-   * caption (`captionY`, 762) is 664, and a frame filling that reaches the
-   * caption exactly and touches it. The portrait frame is 652 and has always
-   * stopped 6px short, which reads correctly — so 652 is the limit, and that
-   * clearance becomes the rule for every shape rather than an accident of how
-   * tall the portrait box happens to be.
+   * Set from the bottom up rather than chosen. Below the frame there is a
+   * caption and a tick row, each of which needs room, and what is left over is
+   * what the viewer may occupy:
    *
-   * It was never missed for tall clips because they all clear it anyway. The
-   * `desktop` frame is 728 and did not: it ran 32px past the caption line, and
-   * the caption, drawn above the viewer, sat over the bottom of the footage.
+   *     900 − 40 (tick row inset) − 43 (its height)
+   *         − 42 (air) − 32 (caption) − 30 (`captionGap`)   = 713
+   *     (713 − 430 centre) × 2                              = 566
+   *
+   * It was 652, which put the frame's edge 6px from the caption — see
+   * `captionGap`. Before that the `desktop` frame was 728 and ran 32px PAST
+   * the caption line, so the caption, drawn above the viewer, sat over the
+   * bottom of the footage.
    */
-  roomH: 652,
+  roomH: 566,
   /**
    * The intro arriving, element by element.
    *
