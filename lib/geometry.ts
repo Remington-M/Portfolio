@@ -393,7 +393,7 @@ export function caseScrollHeight(shots: number): number {
 
 /** Progress of the return-to-deck ending, 0 until past the last shot. */
 export function returnProgress(cp: number, shots: number): number {
-  return clamp01((cp - (shots - 1)) / 0.85);
+  return clamp01((cp - (shots - 1)) / CASE.returnSpan);
 }
 
 /**

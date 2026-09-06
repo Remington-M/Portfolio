@@ -157,9 +157,65 @@ export default function CaseDesktop({ project }: { project: Project }) {
         inset: 0,
         overflowY: "auto",
         overflowX: "hidden",
+        /**
+         * One shot per gesture.
+         *
+         * Scroll position maps straight to shot position here, so a trackpad
+         * flick carries several hundred pixels of momentum and lands two or
+         * three shots along — you throw the page and find out afterwards where
+         * it stopped. `scroll-snap-stop: always` on each shot is the native
+         * answer: momentum is not allowed to cross a snap point, so a flick of
+         * any strength advances exactly one and the next needs another.
+         *
+         * The deck solves the same problem with its own gesture accounting
+         * (`DECK_MOTION.maxPerGesture`) because it is animating a ring rather
+         * than scrolling a document. Here the scroller IS the state, so the
+         * scroller's own mechanism is the right one.
+         */
+        scrollSnapType: "y mandatory",
       }}
     >
       <div style={{ position: "relative", height: caseScrollHeight(shotCount) }}>
+        {/*
+          The snap points: one per shot, plus one where the return-to-deck
+          ending finishes. Zero-width markers rather than snapping the sticky
+          stage itself, which is one element that never moves and so has no
+          per-shot position to snap to.
+
+          The ending gets one so a flick off the last shot arrives somewhere
+          deliberate instead of part-way through the return.
+        */}
+        {Array.from({ length: shotCount }, (_, i) => (
+          <div
+            key={i}
+            aria-hidden
+            style={{
+              position: "absolute",
+              top: CASE.offset + i * CASE.step,
+              left: 0,
+              width: 1,
+              height: 1,
+              scrollSnapAlign: "start",
+              scrollSnapStop: "always",
+              pointerEvents: "none",
+            }}
+          />
+        ))}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            top:
+              CASE.offset +
+              (shotCount - 1 + CASE.returnSpan) * CASE.step,
+            left: 0,
+            width: 1,
+            height: 1,
+            scrollSnapAlign: "start",
+            scrollSnapStop: "always",
+            pointerEvents: "none",
+          }}
+        />
         <div
           style={{
             position: "sticky",

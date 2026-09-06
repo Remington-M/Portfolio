@@ -507,6 +507,12 @@ export const CASE = {
   /** Tail past the last shot, where the return-to-deck ending plays. */
   tail: 1000,
   /**
+   * How much scroll past the last shot the return-to-deck ending occupies, in
+   * shots. `returnProgress` reads it, and so does the snap point that marks
+   * where the ending has finished.
+   */
+  returnSpan: 0.85,
+  /**
    * Every device shape bottoms out on this baseline, so frames of different
    * proportions share one bottom edge. Authored against the 900px stage.
    *
