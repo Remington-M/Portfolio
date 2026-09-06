@@ -156,15 +156,25 @@ export const SPRING = {
    */
   morph: springConfig(200, 1),
   /**
-   * The way back up out of the viewer's dip.
+   * The viewer absorbing the arriving clip's momentum.
    *
-   * Only the return is a spring. The way down is a curve against a clock —
-   * see `CASE.bumpDown` — because a spring stiff enough to reach the bottom
-   * promptly then sits there for whatever time is left, and that pause is the
-   * whole difference between a dip and a flinch. Soft and unhurried on the way
-   * back, which is where the weight is.
+   * Released from rest with a velocity rather than pulled toward a distant
+   * target: its target is where it already is, so the whole motion is the
+   * excursion and the return. Stiffness sets how quickly it gets back and,
+   * with it, how far out it gets; the damping ratio is the character.
+   *
+   * Underdamped on purpose, and it is the one place on this page that should
+   * be. This is a thing being knocked and recovering — the overshoot is the
+   * recovery, not decoration. At 0.55 it swings out, comes back a little past
+   * centre once, and settles.
+   *
+   * Softened from 140 alongside the arrival curve. Both moved the same way and
+   * for the same reason: the beat wanted to be felt rather than watched.
+   *
+   * Being a pixel spring, it retires on `REST.px`, where a hundredth of a pixel
+   * really is nothing — the tight `REST.unit` the dip needed does not apply.
    */
-  bumpUp: springConfig(200, 1),
+  carry: springConfig(85, 0.55),
   /** Soft UI moves — ticks, labels. */
   ui: springConfig(400, 1.291, 0.6),
 } as const;
@@ -172,17 +182,78 @@ export const SPRING = {
 /* ------------------------------------------------------------------ *
  * Shadows
  * ------------------------------------------------------------------ */
+
+/**
+ * A deck card's shadow, at a given strength.
+ *
+ * A function rather than a string because the shadow has to be able to leave.
+ * When the stack tidies itself away behind an opening project it converges on
+ * one slot, and six shadows landing in the same place compound into a bruise
+ * exactly where the composition is supposed to be getting cleaner. Strength 1
+ * is the resting shadow and 0 is none, so the cards can put their shadows down
+ * before they finish arriving.
+ */
+export function deckShadow(front: boolean, strength = 1): string {
+  const k = strength < 0 ? 0 : strength > 1 ? 1 : strength;
+  const cast = front
+    ? { y: 28, blur: 56, spread: -28, alpha: 0.45 }
+    : { y: 16, blur: 40, spread: -26, alpha: 0.38 };
+  const edge = front ? 0.1 : 0.08;
+  return (
+    `0 ${cast.y}px ${cast.blur}px ${cast.spread}px ${castColour(cast.alpha * k)}, ` +
+    `inset 0 0 0 1px ${edgeColour(edge * k)}`
+  );
+}
+
+/**
+ * The two shadow colours, at an alpha.
+ *
+ * Written against CSS custom properties rather than as finished colours so
+ * they follow the theme: `--shadow-cast` and `--shadow-edge` hold channels,
+ * and the per-theme multipliers scale every alpha on the site at once. The
+ * arithmetic stays here because the alphas are animated — a card puts its
+ * shadow down as it tidies away — and CSS has no way to be handed a number
+ * that is changing every frame.
+ */
+export const castColour = (alpha: number) =>
+  `rgb(var(--shadow-cast) / calc(${alpha.toFixed(3)} * var(--shadow-a)))`;
+export const edgeColour = (alpha: number) =>
+  `rgb(var(--shadow-edge) / calc(${alpha.toFixed(3)} * var(--shadow-edge-a)))`;
+
 export const SHADOW = {
-  cardRest:
-    "0 20px 40px -22px oklch(0.35 0.02 60 / 0.4), inset 0 0 0 1px oklch(0.18 0.006 60 / 0.09)",
-  cardFront:
-    "0 28px 56px -28px oklch(0.35 0.02 60 / 0.45), inset 0 0 0 1px oklch(0.18 0.006 60 / 0.1)",
-  cardBack:
-    "0 16px 40px -26px oklch(0.35 0.02 60 / 0.38), inset 0 0 0 1px oklch(0.18 0.006 60 / 0.08)",
-  device: "0 36px 70px -34px oklch(0.35 0.02 60 / 0.5)",
-  carousel:
-    "0 24px 48px -24px oklch(0.35 0.02 60 / 0.42), inset 0 0 0 1px oklch(0.18 0.006 60 / 0.09)",
-  ghost: "0 30px 60px -34px oklch(0.35 0.02 60 / 0.45)",
+  cardFront: deckShadow(true),
+  cardBack: deckShadow(false),
+  device: `0 36px 70px -34px ${castColour(0.5)}`,
+  carousel: `0 24px 48px -24px ${castColour(0.42)}, inset 0 0 0 1px ${edgeColour(0.09)}`,
+  ghost: `0 30px 60px -34px ${castColour(0.45)}`,
+} as const;
+
+/* ------------------------------------------------------------------ *
+ * Tidying away
+ *
+ * What the rest of the deck does while one card is opening into a project.
+ *
+ * It used to fall: every card still on the stack dropped off the bottom of the
+ * screen with a lean on it. The count of objects going from six to one is half
+ * of what signals the navigation, and falling certainly signalled it — but it
+ * scattered the deck at the exact moment the page is meant to be resolving into
+ * one thing, and it threw five cards AWAY from the one the eye is following.
+ *
+ * They square up instead. Every card converges on the slot the opened one is
+ * leaving — same place, same size, no lean, no scatter — so the stack collapses
+ * into a single clean card behind the viewer and fades from there. Same change
+ * of count, arrived at by tidying rather than by scattering.
+ * ------------------------------------------------------------------ */
+export const TIDY = {
+  /**
+   * The opacity a card has left by the time its shadow has gone completely.
+   *
+   * The shadows lead the fade rather than going with it: the cards close the
+   * last of the distance flat, which is what makes the stack read as squaring
+   * up instead of piling up. At 0.6 the shadow is gone while the card itself is
+   * still plainly there.
+   */
+  shadowGoneAt: 0.6,
 } as const;
 
 /* ------------------------------------------------------------------ *
@@ -354,27 +425,236 @@ export const CASE = {
   centreY: 430 / 900,
   /** Where the shot title and its meta line sit, clear of the largest frame. */
   captionY: 762 / 900,
-  /** Space kept either side of the stage, so a wide frame never runs to the edge. */
-  gutter: 96,
   /**
-   * How far the viewer dips when the next clip is the same shape as the last.
+   * Space kept either side of the stage, so a wide frame never runs to the edge.
    *
-   * The morph is what marks a change of shot, and between two clips of matching
-   * proportions it has nothing to do — the frame holds still and the picture
-   * swaps underneath it, which barely registers as a change at all. A short dip
-   * and return gives those a beat of their own, on the same spring, so it reads
-   * as the same viewer reacting rather than as a new effect.
+   * It also has to clear the step arrows, which live outside it: the arrow mark
+   * reaches `arrowInset + 37` = 85 in from the edge, so at the old 96 a fitted
+   * landscape frame passed within 9px of it on a tall window. Far enough out now
+   * that the arrow keeps its own air whatever shape the viewer takes.
    */
-  bump: 0.03,
+  gutter: 108,
   /**
-   * How long the viewer takes to sink into that dip, in milliseconds.
+   * The tallest the viewer is allowed to be, authored against the 900px stage.
    *
-   * A stated duration rather than a spring, so it is still travelling when it
-   * arrives at the bottom and the spring picks it straight up again. It uses
-   * the house curve, so the descent belongs to the same family as everything
-   * else that eases here.
+   * The horizontal counterpart to `gutter`, and the other half of the fit: the
+   * frame is contained inside BOTH budgets rather than sized by height and then
+   * clamped by width.
+   *
+   * Twice the distance from the shots' centre line (`centreY`, 430) to the
+   * caption (`captionY`, 762) is 664, and a frame filling that reaches the
+   * caption exactly and touches it. The portrait frame is 652 and has always
+   * stopped 6px short, which reads correctly — so 652 is the limit, and that
+   * clearance becomes the rule for every shape rather than an accident of how
+   * tall the portrait box happens to be.
+   *
+   * It was never missed for tall clips because they all clear it anyway. The
+   * `desktop` frame is 728 and did not: it ran 32px past the caption line, and
+   * the caption, drawn above the viewer, sat over the bottom of the footage.
    */
-  bumpDown: 300,
+  roomH: 652,
+  /**
+   * The intro screen's horizontal frame.
+   *
+   * Everything on this screen used to sit at a different distance from its own
+   * edge: the back link 64 from the left, the type column 120, and the viewer
+   * 200 from the right. Three margins reading as three unrelated decisions, and
+   * the smallest of them — the back link — pinned to the corner.
+   *
+   * They are one margin now. `rail` is the left edge that the header and the
+   * type column share, and `frameRight` is the air kept to the right of the
+   * viewer; setting them equal lands the whole composition on a symmetric
+   * margin. Both moved the same distance to get there, so the intro is the same
+   * arrangement translated right rather than a re-layout — the type opened up
+   * on the left, the viewer moved out with it, and the space between them is
+   * untouched.
+   *
+   * `rail` scales with type and `frameRight` with geometry, each following what
+   * it actually holds.
+   */
+  intro: {
+    rail: 160,
+    /**
+     * The viewer sits much closer to its edge than the type does to the other
+     * one. Deliberately lopsided: the type column is a block of reading and
+     * wants a rail to sit on, while the viewer is the thing being looked at and
+     * wants to be out at the extent of the page. Balanced margins made it read
+     * as pulled in toward the middle.
+     *
+     * It stops here rather than going further because of the step arrows: the
+     * right arrow's mark reaches `arrowInset + 37` in from the edge, and the
+     * viewer has to clear it by enough that the two do not read as touching.
+     * Pushing this lower means moving the arrows in with it.
+     */
+    frameRight: 112,
+    /** Measure of the type column. Long enough for the overview to breathe. */
+    colWidth: 470,
+  },
+  /**
+   * How far the step arrows sit in from the viewport edge.
+   *
+   * They are viewport furniture rather than part of the composition, so they
+   * keep their own lane outside everything else — but at 34 they were pinned to
+   * the glass, which reads as tight on a wide window. Far enough in now to look
+   * placed, still clearly outside the content.
+   */
+  arrowInset: 48,
+  /**
+   * The push: the outgoing clip leaves the mask as the incoming one arrives.
+   *
+   * The channel the viewer was missing. A transition has shape, position,
+   * content and time to work with, and this page was using shape almost alone —
+   * which fails completely for a run of clips that ARE the same shape. Several
+   * phone recordings in a row are all portrait and all the same size, so no
+   * amount of authoring their boxes can distinguish them. Position always can.
+   *
+   * A push, not a crossfade. Both clips stay fully opaque and one leaves as the
+   * other arrives, so there is never a moment where two half-transparent
+   * pictures are on screen and neither is legible. It also carries a direction,
+   * which ties the change to the scroll that asked for it.
+   *
+   * Distances are fractions of the frame's own width, so the gesture is the
+   * same size on any viewport.
+   */
+  push: {
+    /**
+     * Never nothing. A shot change always pushes at least this far, so the
+     * grammar of the sequence is the same every time rather than something
+     * that appears and disappears depending on the pair of clips involved.
+     */
+    /**
+     * Currently equal to `max`, which means every shot change gets the full
+     * push and `pushFalloff` has nothing to do.
+     *
+     * It went to 0 first — suppressing the push entirely once the aspect turned
+     * far enough — on the reasoning that a viewer becoming a desktop window is
+     * already the most dramatic thing on the page and does not need help. True
+     * of the morph in isolation, but it left the page with two different
+     * grammars: some changes slid and others only resized, and which one you
+     * got was unpredictable from the outside. A transition that surprises you
+     * by being absent is worse than one that is merely emphatic.
+     *
+     * So: everything pushes, and everything overshoots. Pull this back down to
+     * bring the falloff back into play.
+     */
+    min: 1,
+    /**
+     * What a change of shape that says nothing gets: a full push, the outgoing
+     * clip leaving as the incoming one takes its place. This is the carousel
+     * move, and it is the whole reason the channel was added — a run of
+     * identically shaped clips has nothing else, so it gets everything.
+     */
+    max: 1,
+  },
+  /**
+   * How much of an ASPECT change is enough to carry a transition on its own.
+   *
+   * Measured as |ln(a₂/a₁)|, which is the scale-free way to compare two
+   * proportions: it treats 4:3 → 16:9 as the same size of change as 16:9 → 4:3,
+   * which a plain difference does not.
+   *
+   *   square → square      0.00   full push
+   *   1.00 → 0.96          0.04   ~90%
+   *   desktop → landscape  0.24   ~30%
+   *   portrait → desktop   1.11   none
+   *
+   * An earlier version measured how far the frame's EDGES moved and took the
+   * axis that moved less, on the theory that a box growing along one axis while
+   * the other holds still reads as a stretch. True as far as it went, but it
+   * gave portrait → desktop a full push, and that pair is precisely the one
+   * that turned out to look messy. What the morph can carry is a change of
+   * proportion, and that is what this measures.
+   */
+  pushFalloff: 0.35,
+  /**
+   * How much of the push the viewer's change of shape takes, 0–1.
+   *
+   * Below 1 the frame finishes early and the picture keeps crossing under a
+   * viewer that has already arrived. Still one clock — both are read from the
+   * same `t`, so the shape can lead the content by a stated amount but cannot
+   * drift from it.
+   *
+   * At 0.7 the shape lands at 308ms and the picture at 440ms. Leading reads as
+   * the viewer opening to receive what is coming rather than being dragged
+   * along by it. Its cost is directional: a GROWING frame that finishes first
+   * is wider than the clips have yet spread, so bare viewer shows at the
+   * trailing edge until they catch up. Shrinking is free.
+   */
+  morphSpan: 0.7,
+  /**
+   * How long the push takes, in milliseconds.
+   *
+   * Longer than the dip's descent on purpose. The press is a reaction and wants
+   * to be quick; the push is the content actually being replaced and has to be
+   * followable — a slide fast enough to be missed defeats the point of adding
+   * it. On the house curve, like every other position move here.
+   */
+  pushMs: 440,
+  /**
+   * How long after the push lands before the arriving clip starts playing, ms.
+   *
+   * It used to start the instant the shot changed, so the clip was already
+   * running while it slid across — the motion you were meant to be watching
+   * began off to one side, half of it out of frame, and by the time it settled
+   * you had missed the opening. It now sits on its first frame for the crossing
+   * and starts once it has arrived and had a moment to be seen.
+   */
+  playDelay: 200,
+  /**
+   * The carry: the arriving clip hands its momentum to the viewer.
+   *
+   * This replaced a scale dip. The dip pressed the viewer smaller and let it
+   * back up, which was legible but fought the push — the picture was travelling
+   * sideways while its container shrank, two motions on different axes at the
+   * same instant, and the eye could not read them as one event.
+   *
+   * The story is a collision. The incoming clip is still moving when it lands,
+   * and at the moment it lands that speed is handed to the frame.
+   * The clip stops dead inside the viewer and the VIEWER carries on, shoved a
+   * little further in the direction the picture was going, then springs back.
+   * Momentum is conserved across the handoff, so there is no seam to tune: the
+   * curve ends at exactly the velocity the spring begins with.
+   *
+   * Everything about how it FEELS is here and in `SPRING.carry`.
+   */
+  carry: {
+    /**
+     * The curve the clip arrives on. The number that matters is its exit slope:
+     * (1 − y₂)/(1 − x₂), which IS the handoff velocity — the whole transfer is
+     * decided by it.
+     *
+     * Tuned by eye to an S, easing at both ends, exiting at 0.44× its average
+     * speed. That is a deliberate walk-back from where this started. The first
+     * version exited at 1.38× — still accelerating as it landed — on the theory
+     * that a collision needs a real impact to transfer. It does, and it read as
+     * one: a 17px shove every time the shot changed, which is a lot of event
+     * for stepping through a portfolio.
+     *
+     * At 0.44 the clip is settling as it arrives and hands over 522px/s instead
+     * of 1890, which the spring turns into a 6px lean. Present rather than
+     * announced. The mechanism is unchanged and still seamless; what changed is
+     * how hard it is asked to hit.
+     *
+     * Raise the exit slope to arrive harder, lower it to arrive softer.
+     */
+    ease: [0.35, 0, 0.57, 0.81] as const,
+    /**
+     * How much of the clip's speed the viewer takes on, 0–1.
+     *
+     * The mass ratio of the collision, in effect. This is the knob for how far
+     * the viewer travels: the excursion is very nearly proportional to it.
+     */
+    transfer: 0.22,
+    /**
+     * Ceiling on the excursion, in pixels.
+     *
+     * The handoff velocity scales with the push distance, and the push distance
+     * scales with the frame — so without this a wide frame throws the viewer
+     * further than a narrow one for the same event. A stated maximum keeps the
+     * nudge the same size whatever is playing.
+     */
+    maxPx: 26,
+  },
   /** Return-to-deck card, and the ghost cards that fan out behind it. */
   returnCard: { w: 260, h: 565, r: 36, top: 96 },
   ghosts: [

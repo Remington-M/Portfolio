@@ -62,11 +62,38 @@ export function ratioFromDamping(
 /** Substep so a long frame can't make the integration explode. */
 const MAX_STEP = 1 / 120;
 
+/**
+ * How close a spring has to get before it is retired, in the units of whatever
+ * it is animating. THIS IS NOT A UNIVERSAL NUMBER, which is the trap.
+ *
+ * Retiring a spring teleports it the rest of the way and kills its velocity, so
+ * the tolerance is the size of the jump it is allowed to make — and a hundredth
+ * of a pixel is nothing while a hundredth of a SCALE is a whole percent of the
+ * element. Springs here animate both.
+ */
+export const REST = {
+  /** Positions and sizes, in pixels. Sub-pixel, so the jump cannot be seen. */
+  px: 0.01,
+  /**
+   * Scales, opacities and anything else living on 0–1.
+   *
+   * At `px` the viewer's dip finished by jumping 0.43% of the card — nearly
+   * three pixels on a tall frame — while still travelling at 30px/s. Arrested
+   * rather than eased, which is exactly what a spring is supposed to never do,
+   * and it read as a catch right at the end of the motion. Four hundred times
+   * tighter puts the same jump at a fiftieth of a pixel, and the extra time
+   * spent getting there is all motion too small to see.
+   */
+  unit: 0.000025,
+} as const;
+
 export function stepSpring(
   s: Spring,
   target: number,
   dt: number,
   { stiffness, damping, mass }: SpringConfig,
+  /** Tolerance to retire at. Pick from `REST` by what the value MEANS. */
+  rest: number = REST.px,
 ): void {
   let remaining = Math.min(dt, 0.064);
   while (remaining > 0) {
@@ -77,8 +104,10 @@ export function stepSpring(
     s.value += s.velocity * h;
     remaining -= h;
   }
-  // Settle, so we stop writing styles once the spring is visually at rest.
-  if (Math.abs(s.value - target) < 0.01 && Math.abs(s.velocity) < 0.05) {
+  // Settle, so we stop writing styles once the spring is genuinely at rest.
+  // Velocity is held to five times the distance tolerance, which is the ratio
+  // the original pair of thresholds had.
+  if (Math.abs(s.value - target) < rest && Math.abs(s.velocity) < rest * 5) {
     s.value = target;
     s.velocity = 0;
   }

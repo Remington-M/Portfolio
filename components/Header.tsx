@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useStage } from "./media/stage";
+import { CASE } from "@/lib/design";
 
 const mono = {
   fontFamily: "var(--font-mono)",
@@ -21,9 +22,13 @@ export default function Header({
   const ts = stage.ts;
   // The header rides the top edge of the scaled stage, not the raw viewport,
   // so its margin stays in proportion once the scale clamps on a tall display.
+  // The case header shares the intro screen's left rail — it is the top line
+  // of that type column, not a separate thing pinned to the corner. Its inset
+  // is a horizontal measurement and takes the horizontal scale.
+  const sideX = (variant === "case" ? CASE.intro.rail : 64) * stage.sx;
   const pad = mobile
-    ? `${stage.top + 22 * stage.s}px ${24 * ts}px`
-    : `${stage.top + 28 * stage.s}px ${64 * ts}px`;
+    ? `${stage.top + 22 * stage.s}px ${24 * stage.sx}px`
+    : `${stage.top + 28 * stage.s}px ${sideX}px`;
 
   if (variant === "case") {
     return (

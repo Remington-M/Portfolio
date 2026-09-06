@@ -10,13 +10,86 @@
   --hairline: oklch(0.18 0.006 60 / 0.14);
   --frame-edge: oklch(0.18 0.006 60 / 0.1);
   --device: oklch(0.2 0.006 60);
+  /**
+   * What the project viewer is, underneath whatever is playing in it.
+   *
+   * White rather than the page or the deck card's near-black, because the
+   * clips are overwhelmingly white product UI — so on the frames where the
+   * viewer is wider than the picture inside it, the surround reads as part of
+   * the same screenshot instead of as a hole with something behind it.
+   */
+  --viewer: oklch(1 0 0);
   --shot-empty: oklch(0.28 0.006 60);
   --ghost: oklch(0.905 0.012 80);
   --return-card: oklch(0.912 0.012 80);
   --link-hover: oklch(0.58 0.14 25);
 
+  /* ---------------------------------------------------------------- *
+   * Shadow, as channels rather than a colour.
+   *
+   * Every shadow on the site is built in JS, with an alpha that varies —
+   * a deck card puts its shadow down as it tidies away, so the alpha is a
+   * number being animated rather than a constant. That rules out storing
+   * finished colours here: what the tokens hold is the CHANNELS, and the
+   * alpha is applied at the point of use as `rgb(var(--shadow-cast) / a)`.
+   *
+   * `--shadow-a` scales every one of those alphas at once. A shadow is a
+   * shortage of light, so on a dark page there is less light to take away
+   * and the same alpha reads as almost nothing — dark mode leans on pure
+   * black and turns the whole set up rather than re-authoring each value.
+   * ---------------------------------------------------------------- */
+  --shadow-cast: 77 71 64;
+  --shadow-edge: 42 39 36;
+  --shadow-a: 1;
+  --shadow-edge-a: 1;
+
   --font-display: var(--font-archivo), system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  /* Tells the browser to theme its own furniture — scrollbars, form
+     controls, the flash of background before paint. */
+  color-scheme: light dark;
+}
+
+/* ------------------------------------------------------------------ *
+ * Dark
+ *
+ * Follows the system setting and nothing else: there is no toggle, because
+ * the site has no chrome to put one in and no state of its own to remember
+ * it with.
+ *
+ * Two things deliberately do NOT invert.
+ *
+ * `--viewer` stays white. It is the surface behind whatever is playing, and
+ * the clips are white product UI — the moments where the viewer is wider
+ * than the picture inside it read as part of the same screenshot only while
+ * the two match. Darkening it would put a black bar down the side of a white
+ * app recording.
+ *
+ * The desktop window chrome drawn over the footage stays dark for the same
+ * reason: it is depicting an application, not participating in the page.
+ * ------------------------------------------------------------------ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: oklch(0.165 0.005 70);
+    --ink: oklch(0.93 0.006 80);
+    --hairline: oklch(0.93 0.006 80 / 0.16);
+    --frame-edge: oklch(0.93 0.006 80 / 0.12);
+    /* Lighter than the page, so a card still reads as an object sitting on
+       it rather than a hole cut out of it. */
+    --device: oklch(0.25 0.006 60);
+    --shot-empty: oklch(0.3 0.006 60);
+    --ghost: oklch(0.255 0.008 70);
+    --return-card: oklch(0.275 0.008 70);
+    --link-hover: oklch(0.72 0.15 25);
+
+    --shadow-cast: 0 0 0;
+    /* The inset hairline flips from a dark outline to a light rim — on a
+       dark ground an edge is a highlight, not a shadow. */
+    --shadow-edge: 245 240 232;
+    --shadow-a: 1.55;
+    --shadow-edge-a: 0.85;
+  }
 }
 
 @supports not (color: oklch(0 0 0)) {
@@ -26,10 +99,25 @@
     --hairline: rgba(42, 39, 36, 0.14);
     --frame-edge: rgba(42, 39, 36, 0.1);
     --device: #302d2a;
+    --viewer: #ffffff;
     --shot-empty: #45413d;
     --ghost: #e8e2d6;
     --return-card: #eae4d8;
     --link-hover: #c14a34;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #16150f;
+      --ink: #ece7dd;
+      --hairline: rgba(236, 231, 221, 0.16);
+      --frame-edge: rgba(236, 231, 221, 0.12);
+      --device: #2b2825;
+      --shot-empty: #37332f;
+      --ghost: #2d2a26;
+      --return-card: #322e2a;
+      --link-hover: #ef8b6f;
+    }
   }
 }
 

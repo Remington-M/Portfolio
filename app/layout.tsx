@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Archivo, IBM_Plex_Mono } from "next/font/google";
 import { StageProvider } from "@/components/media/stage";
 import MediaLayer from "@/components/media/MediaLayer";
+import TunePanel from "@/components/TunePanel";
 import "./globals.css";
 
 /**
@@ -53,6 +54,11 @@ export default function RootLayout({
             deck through to a project page — the element is never remounted.
           */}
           <MediaLayer />
+          {/*
+            Motion tuning, off unless asked for — `?tune` on any URL, or the
+            T key. Renders nothing at all otherwise.
+          */}
+          <TunePanel />
         </StageProvider>
       </body>
     </html>

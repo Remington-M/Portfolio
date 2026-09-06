@@ -40,8 +40,27 @@ export type Stage = {
   w: number;
   h: number;
   mobile: boolean;
-  /** Uniform scale applied to authored geometry. 1 at the reference height. */
+  /**
+   * Vertical scale. 1 at the reference height.
+   *
+   * Applies to anything whose constraint is vertical space — frame heights,
+   * baselines, the caption line, vertical padding. It is NOT the scale for
+   * horizontal measurements; see `sx`.
+   */
   s: number;
+  /**
+   * Horizontal scale. 1 at the reference width.
+   *
+   * Margins used to ride `s`, which meant the width of the page's gutters was
+   * decided by how tall the window was: the same 1440-wide window carried an
+   * 84px gutter at 700 tall and a 144px one at 1200, having never changed
+   * width. Horizontal room is now answerable to horizontal space.
+   *
+   * It cannot exceed 1, because the stage itself stops at the reference width —
+   * past that the surplus becomes page margin outside the stage, which is where
+   * extra width should go rather than into ever-wider gutters.
+   */
+  sx: number;
   /**
    * Type scale. Tracks `s` upward at a reduced rate and never goes below 1 —
    * type that grows as fast as the cards ends up shouting.
@@ -59,11 +78,13 @@ export function makeStage(vw: number, vh: number, mobile: boolean): Stage {
   const ref = mobile ? MOBILE_REF : DESKTOP_REF;
   const min = mobile ? SCALE.min.mobile : SCALE.min.desktop;
   const s = clamp(vh / ref.h, min, SCALE.max);
+  const w = mobile ? vw : Math.min(vw, DESKTOP_REF.w);
   return {
-    w: mobile ? vw : Math.min(vw, DESKTOP_REF.w),
+    w,
     h: vh,
     mobile,
     s,
+    sx: clamp(w / ref.w, min, 1),
     ts: 1 + Math.max(0, s - 1) * SCALE.typeRate,
     // Split the slack. Inside the unclamped range this is exactly 0, so the
     // designed viewports are untouched.
@@ -402,27 +423,56 @@ export function caseFrame(
   cp: number,
   shapes: ShotShape[],
   stage: Stage,
+  /**
+   * Stop the viewer taking its shape from the clip.
+   *
+   * One box for every shot, so nothing about the frame changes as the sequence
+   * is stepped and the push is left carrying the whole transition on its own.
+   * Clips are contained inside it rather than filling it, which is the trade:
+   * no resize, but a portrait recording sits in a wide window with the device
+   * surface either side of it.
+   *
+   * The intro is exempt. It is a phone standing beside a column of type, and
+   * the card that flew in from the deck to become it is phone-shaped — turning
+   * that into a landscape window would break the arrival, not the sequence.
+   */
+  fixed = false,
 ): Geo {
   const shots = shapes.length;
   const active = clamp(Math.round(cp), 0, shots - 1);
   const s = stage.s;
-  const base = frameBox(shapes[active].kind, shapes[active].aspect);
+  const introScreen0 = cp < 0.5 && returnProgress(cp, shots) === 0;
+  const base =
+    fixed && !introScreen0
+      ? frameBox("desktop")
+      : frameBox(shapes[active].kind, shapes[active].aspect);
   const r = returnProgress(cp, shots);
   const L = (from: number, to: number) => lerp(from, to, r);
 
   const card = CASE.returnCard;
 
   /**
-   * A wide frame is fitted to the stage rather than allowed to run off it.
+   * The frame is contained inside the room it has, on both axes at once.
    *
-   * The authored sizes are generous on purpose, so the limit has to live here:
+   * The authored sizes are generous on purpose, so the limit lives here:
    * whatever comes out of `frameBox` is scaled down, keeping its proportions,
-   * until it sits inside the stage with a gutter either side. That way the
-   * sizes can be chosen for how they read rather than for the narrowest window
-   * they must survive.
+   * until it sits inside the stage. That way the sizes can be chosen for how
+   * they read rather than for the narrowest window they must survive.
+   *
+   * One `min` over both budgets rather than a width clamp bolted onto a
+   * height-derived size. With only the width term, the governing dimension
+   * SWITCHED as a window resized — height decided the frame until the width
+   * term abruptly took over — and nothing at all stopped a frame growing down
+   * through the caption. Asking both questions every time means neither one
+   * takes over: whichever is tighter simply binds, and it changes smoothly.
+   *
+   * Still capped at 1. This shrinks to fit and never grows: `s` is what makes
+   * the frame bigger on a bigger stage, and the authored sizes are chosen for
+   * how they read rather than to be filled out.
    */
-  const room = Math.max(1, stage.w - CASE.gutter * 2 * s);
-  const fit = Math.min(1, room / (base.w * s));
+  const roomW = Math.max(1, stage.w - CASE.gutter * 2 * stage.sx);
+  const roomH = Math.max(1, CASE.roomH * s);
+  const fit = Math.min(1, roomW / (base.w * s), roomH / (base.h * s));
 
   const w = (r > 0 ? L(base.w * fit, card.w) : base.w * fit) * s;
   const h = (r > 0 ? L(base.h * fit, card.h) : base.h * fit) * s;
@@ -431,12 +481,16 @@ export function caseFrame(
   const innerRadius = (r > 0 ? L(base.ir, card.r) : base.ir) * s;
 
   const baseline = caseBaseline(stage);
-  const introScreen = cp < 0.5 && r === 0;
+  const introScreen = introScreen0;
 
   let x: number, y: number;
   if (introScreen) {
-    // Intro: parked at the right of the stage, beside the text column.
-    x = stage.w - 200 * s - base.h * s * (base.w / base.h) * fit;
+    // Intro: parked at the right of the stage, beside the text column, on
+    // the same margin the type column keeps on the left.
+    x =
+      stage.w -
+      CASE.intro.frameRight * stage.sx -
+      base.h * s * (base.w / base.h) * fit;
     y = stageY(stage, 95);
   } else {
     x = stage.w / 2 - w / 2;

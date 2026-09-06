@@ -148,10 +148,9 @@ export default function CaseDesktop({ project }: { project: Project }) {
             <motion.div
               style={{
                 position: "absolute",
-                left: 120 * ts,
+                left: CASE.intro.rail * stage.sx,
                 top: stageY(stage, 214),
-                width: 500 * ts,
-                maxWidth: 470 * ts,
+                width: CASE.intro.colWidth * ts,
                 zIndex: 54,
                 opacity: introOpacity,
                 y: introY,
@@ -377,7 +376,16 @@ function StepArrow({
   onClick: () => void;
 }) {
   const { stage } = useStage();
-  const s = stage.s;
+  /**
+   * The arrows are horizontal furniture, so their SIZE comes off the
+   * horizontal scale as well as their inset.
+   *
+   * Splitting the two put the lane's outer edge on `sx` and its inner edge on
+   * `s`, so a taller window grew the mark inward while the frame beside it
+   * stayed put — the clearance between them fell from 25px to 12px purely
+   * because the window got taller. On one scale the lane is invariant.
+   */
+  const s = stage.sx;
   const [hover, setHover] = useState(false);
 
   return (
@@ -390,7 +398,7 @@ function StepArrow({
       onPointerLeave={() => setHover(false)}
       style={{
         position: "absolute",
-        [side]: 34 * s,
+        [side]: CASE.arrowInset * s,
         top: "50%",
         transform: "translateY(-50%)",
         zIndex: 62,

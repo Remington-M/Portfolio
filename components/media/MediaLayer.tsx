@@ -1,10 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   motion,
   motionValue,
   useAnimationFrame,
+  useMotionValue,
   useMotionValueEvent,
   useReducedMotion,
   type MotionValue,
@@ -15,12 +23,13 @@ import { projects, stripeFill, type Shot } from "@/lib/projects";
 import { asset, media } from "@/lib/asset";
 import {
   CASE,
-  GENTLE,
   SHADOW,
   SPRING,
   DECK,
   DECK_MOTION,
   DRAG,
+  TIDY,
+  deckShadow,
 } from "@/lib/design";
 import {
   cardDepth,
@@ -32,13 +41,17 @@ import {
   railCard,
   type Geo,
 } from "@/lib/geometry";
+import { derived as tuned, subscribeTuning, tuning } from "@/lib/tuning";
 import {
   clamp,
+  clamp01,
   cubicBezier,
+  lerp,
   spring,
   snapSpring,
   springConfig,
   stepSpring,
+  REST,
   type Spring,
   type SpringConfig,
 } from "@/lib/spring";
@@ -129,6 +142,11 @@ type CardValues = {
   opacity: MotionValue<number>;
   scrim: MotionValue<number>;
   z: MotionValue<number>;
+  /**
+   * Driven per frame rather than picked in the render, so the shadow can fade
+   * out under the stack as it tidies itself away. See `TIDY.shadowGoneAt`.
+   */
+  shadow: MotionValue<string>;
 };
 
 const FIELDS = [
@@ -216,20 +234,38 @@ function makeValues(): CardValues {
     opacity: motionValue(0),
     scrim: motionValue(0),
     z: motionValue(0),
+    shadow: motionValue(SHADOW.cardBack),
   };
 }
 
 /**
- * Where a card goes when it isn't the one being opened: down and out, with a
- * little rotation. The count of objects changing from six to one is half of
- * what signals the navigation, so this drop has to read clearly.
+ * Where a card goes when it isn't the one being opened.
+ *
+ * Not away — in. It squares up on the slot the opened card is leaving: same
+ * place, same size, no lean, no scatter. Six cards resolving onto one line
+ * reads as the stack tidying itself into a single clean card behind the viewer,
+ * and it moves everything TOWARD the card the eye is following rather than
+ * throwing five of them off the bottom of the screen away from it.
+ *
+ * The count of objects still goes from six to one, which is half of what
+ * signals the navigation. It just resolves now instead of scattering.
+ *
+ * Leaving the page is the one place a card really does fade out, and its shadow
+ * goes ahead of it — see `TIDY.shadowGoneAt`.
  */
-function dropped(geo: Geo, i: number, reduced: boolean): Geo {
+function tidied(
+  geo: Geo,
+  origin: { cx: number; cy: number },
+  reduced: boolean,
+): Geo {
+  if (reduced) return { ...geo, opacity: 0 };
   return {
     ...geo,
-    y: geo.y + (reduced ? 0 : 300 + i * 26),
-    rotate: reduced ? 0 : geo.rotate + (i % 2 ? 9 : -9),
-    // Leaving the page is the one place a card really does fade out.
+    x: origin.cx - geo.w / 2,
+    y: origin.cy - geo.h / 2,
+    rotate: 0,
+    rotateY: 0,
+    scale: 1,
     opacity: 0,
   };
 }
@@ -605,13 +641,45 @@ export default function MediaLayer() {
    * all, so the page never has more than a few decoding at once.
    */
   const [shotIndex, setShotIndex] = useState(0);
+  /**
+   * The shot change, and everything that comes with it, in ONE update.
+   *
+   * This used to be split: the index moved here and the push was set up in an
+   * effect keyed on it. That left exactly one render where the shot had already
+   * changed but `pushFrom` had not caught up — so the clip that was leaving
+   * matched neither "the shot on screen" nor "the shot being pushed out", was
+   * classed as gone, and got paused and wound back to its first frame. In full
+   * view, on the frame the transition started.
+   *
+   * Nothing here is allowed to lag anything else, so it all goes in together
+   * and React commits it as one render.
+   */
+  const shotRef = useRef(0);
+  const armTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** A push worked out but not yet started — see the layout effect below. */
+  const pending = useRef<{ enter: number; wait: number } | null>(null);
+  /**
+   * The viewer's shape at the instant a push began.
+   *
+   * Read off the live springs rather than recomputed from the outgoing shot,
+   * so a transition started while the last one is still settling continues from
+   * where the frame actually IS rather than from where it was supposed to be.
+   */
+  const morphFrom = useRef<Record<string, number> | null>(null);
+  const [pushSeq, setPushSeq] = useState(0);
+  useEffect(() => () => {
+    if (armTimer.current) clearTimeout(armTimer.current);
+  }, []);
+
   useMotionValueEvent(cp, "change", (v) => {
     const next = Math.max(0, Math.round(v));
-    setShotIndex((prev) => (prev === next ? prev : next));
+    if (next === shotRef.current) return;
+    const prev = shotRef.current;
+    shotRef.current = next;
+    setShotIndex(next);
+    beginTransition(prev, next);
   });
 
-  /** The shot we were on last, so a change of shot can be noticed. */
-  const lastShot = useRef(-1);
   /**
    * The dip the viewer takes when a clip is replaced by one of the same shape.
    *
@@ -619,9 +687,71 @@ export default function MediaLayer() {
    * with a settle, a hold and a release, and it is multiplied into the scale at
    * the end so the morph underneath it stays exactly as it was.
    */
-  const bump = useRef({ value: 1, velocity: 0 });
-  const bumpPhase = useRef<"idle" | "down" | "up">("idle");
-  const bumpAt = useRef(0);
+  /**
+   * The viewer's own displacement, in pixels, after the arriving clip lands.
+   *
+   * Target is 0 — where it already is — so nothing pulls it anywhere. It moves
+   * only because the handoff kicks it, and everything after that is the spring
+   * getting back.
+   */
+  const carry = useRef({ value: 0, velocity: 0 });
+
+  /**
+   * The push.
+   *
+   * `pushX` is the incoming clip's offset, in pixels: it starts at `pushEnter`
+   * and runs to 0. The outgoing clip derives its own position from the same
+   * value — `pushX - pushEnter` — so one number places both, and they cannot
+   * come apart. Sign is the direction of travel, so going back pushes back.
+   */
+  const pushIn = useMotionValue(0);
+  const pushOut = useMotionValue(0);
+  const [pushEnter, setPushEnter] = useState(0);
+  const [pushFrom, setPushFrom] = useState(-1);
+  /**
+   * The size each of the two clips is drawn at while a transition runs.
+   *
+   * Each is the size its own shot settles at, so neither changes while the
+   * viewer morphs between them — the arriving clip is already the size it will
+   * be, and the departing one keeps the size it was. Null means "fill the
+   * viewer", which is what everything does when nothing is in transition.
+   */
+  const [clipIn, setClipIn] = useState<Box | null>(null);
+  const [clipOut, setClipOut] = useState<Box | null>(null);
+  /**
+   * Whether the shot on screen is allowed to play.
+   *
+   * False for the length of a crossing plus `playDelay`. A clip that starts the
+   * instant the shot changes plays its opening while it is still sliding in and
+   * half out of frame, which is the part of it most worth seeing.
+   */
+  const [armed, setArmed] = useState(true);
+  const pushAt = useRef(0);
+  const pushRunning = useRef(false);
+
+  /**
+   * The one piece of tuning that changes RENDERING rather than just numbers the
+   * frame loop reads, so it has to come back through React: the clips fill the
+   * viewer when it morphs to fit them and are contained when it does not.
+   */
+  /**
+   * Seeded from the default rather than from the store, then synced on mount.
+   *
+   * The store is restored from localStorage as the module loads, so reading it
+   * for a `useState` initialiser would have the client's first render disagree
+   * with the server's — a hydration mismatch on nothing more than a debug
+   * setting. Converging in the effect costs one extra render and cannot.
+   */
+  const [frameFixed, setFrameFixed] = useState(false);
+  const [contentFixed, setContentFixed] = useState(false);
+  useEffect(() => {
+    const sync = () => {
+      setFrameFixed(tuning.frameFixed);
+      setContentFixed(tuning.contentFixed);
+    };
+    sync();
+    return subscribeTuning(sync);
+  }, []);
 
   const [selectedIndex, setSelectedIndex] = useState(-1);
   useMotionValueEvent(selected, "change", (v) => setSelectedIndex(v));
@@ -634,12 +764,66 @@ export default function MediaLayer() {
     return set;
   }, [nearIndex, selectedIndex]);
 
+  /**
+   * The shot the current route change arrived on, or -1 before the first frame
+   * of it has been seen.
+   *
+   * `settling` means only "a route change is still playing out", and while it
+   * is set the viewer runs on the handoff spring — the loose, bouncy one that
+   * carries the card from the deck to the page. That is right for the arrival
+   * and wrong for everything after it: a change of shot is its own event and
+   * wants the morph spring, but it was inheriting the handoff spring whenever
+   * it happened before the arrival had finished settling.
+   *
+   * Which is why it showed up on a first visit and not later. The clips are
+   * still being fetched and decoded then, so frames are long, and the spring
+   * integrator advances at most 64ms of its own time per frame — the arrival
+   * takes several times longer in wall-clock terms than it does once the media
+   * is warm, and the first scroll lands inside it. Warm, it settles before
+   * anyone can scroll, so the same code picks the morph spring.
+   *
+   * Recording the arrival shot ends the handoff on its own terms instead: the
+   * moment the viewer is asked for a different shot, the arrival is over,
+   * whatever the springs are still doing.
+   */
+  const arrivalShot = useRef(-1);
+
   // A route change retargets every spring. Nothing else needs to coordinate —
   // the springs simply take over from wherever the cards currently are, which
   // is why this needs none of the chained timers the prototype used.
   useEffect(() => {
     settling.current = true;
-  }, [transitionKey]);
+    arrivalShot.current = -1;
+    /**
+     * The shot history belongs to the page being left, not the one arriving.
+     *
+     * Without this, landing on a project reads the last shot of the PREVIOUS
+     * one as the shot being pushed out — a transition between two clips that
+     * were never on screen together, measured against the new project's shapes,
+     * playing over the top of the arrival.
+     */
+    /**
+     * The shot this page opened on, so the next real change has something to
+     * be measured against.
+     *
+     * Read here rather than seeded from the frame loop: the loop is the wrong
+     * place for something the very first shot change depends on, and a layer
+     * that has not painted yet would silently skip that first transition.
+     *
+     * The incoming page's own `cp.set(0)` fires its change event before this
+     * effect, so it can still be read as a step from the LAST project's final
+     * shot. That transition is real but stillborn — everything it set up is
+     * cleared immediately below, in this same commit, before anything paints.
+     */
+    shotRef.current = Math.max(0, Math.round(cp.get()));
+    pushRunning.current = false;
+    setPushFrom(-1);
+    setPushEnter(0);
+    setClipIn(null);
+    setClipOut(null);
+    pushIn.set(0);
+    pushOut.set(0);
+  }, [transitionKey, pushIn, pushOut, cp]);
 
   /**
    * The shape of each screen on the project page: the intro, then one per
@@ -656,24 +840,173 @@ export default function MediaLayer() {
   }, [selectedIndex]);
 
   /**
-   * A dip when the shape does not change.
+   * Everything that happens when the shot changes.
    *
-   * Nudging the scale spring off its target is all this takes: the target is
-   * still 1, so the same morph spring carries it back, and it needs no
-   * animation of its own to unwind or get interrupted by the next shot.
+   * One measurement drives both halves. `assist` is how little the geometry
+   * said — 1 when the frame barely moved, 0 when the morph carried the change
+   * on its own — and the push distance and the dip depth are both scaled by it.
+   * So a run of identically-shaped clips gets the full treatment and a dramatic
+   * change of shape is left alone, out of one rule rather than a special case
+   * per pair.
+   *
+   * The push is measured off the axis that moved LESS. A frame that grows
+   * sideways while its height holds still reads as a stretch rather than as a
+   * change of size, so by the only measure that matters it did not move at all.
+   */
+  /**
+   * The size the clip on screen is drawn at: the size its own shot settles to.
+   *
+   * Set once and left alone. It was being released back to "fill the viewer"
+   * when the push landed, which looked right for a frame and then was not — the
+   * push runs 380ms and the frame's morph is a spring that is often still
+   * settling past it, so handing the clip back to the frame at that moment
+   * reattached it to something still moving and it grew the rest of the way in.
+   * A visible zoom, right at the end, which is the one place nothing should be
+   * moving.
+   *
+   * `beginTransition` sets the same value in the same commit as the shot index,
+   * so a change of shot never waits a render for it. This is what keeps it
+   * honest afterwards: the stage can change under a settled page — a window
+   * resize, a change of tuning — and the clip has to follow the size its shot
+   * WOULD settle to now, not the one it settled to then.
    */
   useEffect(() => {
-    const prev = lastShot.current;
-    lastShot.current = shotIndex;
-    if (selectedIndex < 0 || prev < 0 || prev === shotIndex) return;
-    const from = shotShapes[prev]?.aspect;
-    const to = shotShapes[shotIndex]?.aspect;
-    if (from === undefined || to === undefined) return;
-    // A real change of shape is its own signal; this is only for the rest.
-    if (Math.abs(from - to) > 0.02) return;
-    bumpPhase.current = "down";
-    bumpAt.current = performance.now();
-  }, [shotIndex, selectedIndex, shotShapes]);
+    if (selectedIndex < 0 || !contentFixed || !shotShapes[shotIndex]) {
+      setClipIn(null);
+      return;
+    }
+    const f = caseFrame(shotIndex, shotShapes, stage, frameFixed);
+    setClipIn((prev) =>
+      prev && prev.w === f.w && prev.h === f.h ? prev : { w: f.w, h: f.h },
+    );
+  }, [shotIndex, selectedIndex, shotShapes, stage, frameFixed, contentFixed]);
+
+  const beginTransition = (prev: number, shot: number) => {
+    if (armTimer.current) clearTimeout(armTimer.current);
+    if (selectedIndex < 0 || prev < 0 || prev === shot) return;
+    if (!shotShapes[prev] || !shotShapes[shot] || reduced) return;
+
+    // The frames as they will actually be drawn, not the authored boxes — the
+    // fit can shrink either of them.
+    const from = caseFrame(prev, shotShapes, stage, tuning.frameFixed);
+    const to = caseFrame(shot, shotShapes, stage, tuning.frameFixed);
+    // How much the PROPORTION changed, on a log scale so it reads the same in
+    // both directions. A big change of shape is its own announcement and wants
+    // no help; a small one gets everything.
+    const turned = Math.abs(Math.log(to.w / to.h) - Math.log(from.w / from.h));
+    const assist = clamp01(1 - turned / tuning.pushFalloff);
+
+    const span = tuning.pushOn
+      ? tuning.pushMin + (tuning.pushMax - tuning.pushMin) * assist
+      : 0;
+    /**
+     * Measured against the NARROWER of the two frames.
+     *
+     * The two clips are always exactly as wide as the frame, and they cover it
+     * between them only while the offset stays inside that width — push them
+     * further apart than the frame is wide and a gap opens between them with
+     * the card's own background showing through it. The frame is morphing at
+     * the same time, so the width to respect is the smaller end of the morph.
+     */
+    const dir = shot > prev ? 1 : -1;
+    /**
+     * How far the picture travels. 1 is a full push — the arriving clip starts
+     * exactly out of sight; below that it begins already partly on screen and
+     * slides the rest of the way.
+     *
+     * The distance is the mean of the two widths, not the arriving one's.
+     *
+     * What the arriving clip has to clear is the VIEWER as it stands when the
+     * transition begins, and that is the width of the clip leaving, not the one
+     * coming. Measured off its own width it worked in one direction and failed
+     * in the other: going from a wide clip to a narrow one, a distance of the
+     * narrow clip's width left it starting well inside the wide frame — dropped
+     * on top of the outgoing picture instead of arriving from the edge.
+     *
+     * Half of each added together puts the arriving clip's leading edge exactly
+     * on the frame's trailing edge, whichever way the sizes go, and keeps the
+     * two exactly adjacent for the whole crossing. Where the two shots are the
+     * same size — a run of identical shapes — it collapses to the viewer's own
+     * width, so "1 = one viewport" still means what it says.
+     *
+     * When the clips instead fill the viewer they are both its width and there
+     * is no mean to take; the wider end is what has to be cleared.
+     */
+    const span0 = tuning.contentFixed
+      ? (from.w + to.w) / 2
+      : Math.max(from.w, to.w);
+    const enter = span0 * span * dir;
+
+    /**
+     * No push for this pair — but the last one's state has to go.
+     *
+     * Returning early left `pushFrom` naming a clip from an earlier, unrelated
+     * transition, which kept it mounted, opaque and parked at that transition's
+     * final offset. Off-frame and invisible until the viewer morphed wider,
+     * at which point a clip nobody asked for slid into view from the side.
+     */
+    if (enter === 0) {
+      pushRunning.current = false;
+      setPushFrom(-1);
+      setPushEnter(0);
+      setClipIn(null);
+      setClipOut(null);
+      pushIn.set(0);
+      pushOut.set(0);
+    } else {
+      setPushFrom(prev);
+      setPushEnter(enter);
+      setClipOut(tuning.contentFixed ? { w: from.w, h: from.h } : null);
+      setClipIn(tuning.contentFixed ? { w: to.w, h: to.h } : null);
+    }
+
+    setArmed(false);
+    /**
+     * Handed to a layout effect rather than applied here.
+     *
+     * `pushIn` and `pushOut` are motion values: setting one moves whichever
+     * element is currently bound to it, this instant, outside React. The roles
+     * that decide which element THAT is are React state, and land a render
+     * later. Set them here and for one frame the departing clip is drawn at the
+     * arriving clip's offset — a flick sideways and back, on every transition.
+     *
+     * The layout effect below runs after the commit that assigns the roles and
+     * before the browser paints, so nothing is ever placed by a stale role.
+     */
+    pending.current = {
+      enter,
+      wait: (enter === 0 ? 0 : tuning.pushMs) + tuning.playDelay,
+    };
+    setPushSeq((n) => n + 1);
+  };
+
+  /**
+   * Start the push, once the roles it depends on are actually in the DOM.
+   *
+   * Keyed on a counter rather than on the values themselves, so two transitions
+   * that happen to produce identical numbers still each get their own start.
+   */
+  useLayoutEffect(() => {
+    const p = pending.current;
+    if (!p) return;
+    pending.current = null;
+    const sel = selected.get();
+    const live = sel >= 0 ? springs.current[sel] : null;
+    morphFrom.current =
+      live && tuning.morphOnPush
+        ? (Object.fromEntries(
+            MORPH_FIELDS.map((f) => [f, live[f].value]),
+          ) as Record<string, number>)
+        : null;
+    pushIn.set(p.enter);
+    pushOut.set(0);
+    pushAt.current = performance.now();
+    pushRunning.current = p.enter !== 0;
+    if (armTimer.current) clearTimeout(armTimer.current);
+    // Hold the arriving clip on its first frame until it has arrived and been
+    // still for a beat.
+    armTimer.current = setTimeout(() => setArmed(true), p.wait);
+  }, [pushSeq, pushIn, pushOut, selected]);
 
   useAnimationFrame((time, deltaMs) => {
     if (stage.w === 0 || stage.h === 0) return;
@@ -784,6 +1117,11 @@ export default function MediaLayer() {
     const pv = p.get();
     const pig = pi.get();
     const cpv = cp.get();
+    // First frame of a route change: this is the shot it arrived on. Latched
+    // here rather than in the effect so it cannot read a `cp` that the page has
+    // not reset yet.
+    if (settling.current && arrivalShot.current < 0)
+      arrivalShot.current = Math.round(cpv);
     const sel = selected.get();
     const g = gesture.current;
 
@@ -843,39 +1181,81 @@ export default function MediaLayer() {
     }
 
     /**
-     * Step the dip: down on a clock, back up on a spring.
+     * Step the push, then the carry it hands off to.
      *
-     * The descent is a stated 500ms on the house curve, so it is still moving
-     * when it reaches the bottom. The spring then takes over mid-motion — the
-     * integrator is stepped by hand here, so handing one motion to another
-     * carries position and velocity across with no seam, and the changeover is
-     * a continuation rather than a restart.
+     * The push is a stated duration against a clock — this page has no
+     * gestures, every shot change comes from a key or a button, so there is no
+     * velocity coming in from a hand and nothing for a spring to be answering.
+     * A curve is the honest description of it.
+     *
+     * The carry is a spring, because what it is doing IS physics: the viewer
+     * has been knocked and is recovering. The integrator is stepped by hand
+     * here, which is what lets one motion hand position and velocity to another
+     * with no seam — the changeover is a continuation, not a restart.
      */
-    if (bumpPhase.current !== "idle") {
-      if (bumpPhase.current === "down") {
-        const t = (performance.now() - bumpAt.current) / CASE.bumpDown;
-        if (t >= 1) {
-          bump.current.value = 1 - CASE.bump;
-          /**
-           * Handed over at rest, not with the descent's speed.
-           *
-           * Carrying velocity across only makes sense from a curve that is
-           * still travelling when it ends. This one eases out, so it arrives
-           * at the bottom already stopped — and the velocity being estimated
-           * from a finite difference over the last 4% of it was small, noisy
-           * and pointed the wrong way for the spring, which is what made the
-           * return read as a stutter rather than as a spring at all.
-           */
-          bump.current.velocity = 0;
-          bumpPhase.current = "up";
-        } else {
-          bump.current.value = 1 - CASE.bump * BUMP_EASE(t);
-        }
-      } else {
-        stepSpring(bump.current, 1, dt, SPRING.bumpUp);
-        if (bump.current.value === 1) bumpPhase.current = "idle";
+    /**
+     * How far through the crossing we are, eased. Two readings of one clock:
+     * the picture's, and the viewer's — which may be asked to finish earlier.
+     * -1 means nothing is crossing.
+     *
+     * Still a single timebase, which is the part that mattered. `morphSpan`
+     * only decides how much of it the shape change gets; both are read from
+     * the same `t`, so neither can drift from the other, only lead it by a
+     * stated amount.
+     */
+    let morphE = -1;
+    if (pushRunning.current) {
+      const t = (performance.now() - pushAt.current) / tuning.pushMs;
+      const pushE = t >= 1 ? 1 : tuned.ease(t);
+      morphE =
+        t >= 1 ? 1 : tuned.ease(Math.min(1, t / Math.max(0.05, tuning.morphSpan)));
+      const o = t >= 1 ? 0 : pushEnter * (1 - pushE);
+      pushIn.set(o);
+      pushOut.set(o - pushEnter);
+      if (t >= 1) {
+        pushRunning.current = false;
+        /**
+         * The departing clip is done.
+         *
+         * Its role reverts to idle, which pauses it and winds it back — it had
+         * no way of ever getting there before, because `pushFrom` only changed
+         * on the NEXT shot change. So it went on playing behind the viewer
+         * indefinitely, burning a decoder on something nobody could see, and
+         * arrived at its next turn part-way through itself.
+         *
+         * Safe to drop here rather than fading: the arriving clip is exactly
+         * the viewer's size and sitting at zero by now, so it covers the frame
+         * completely and there is nothing behind it left to see.
+         */
+        setPushFrom(-1);
+        setClipOut(null);
+        morphFrom.current = null;
+        /**
+         * The handoff.
+         *
+         * The clip's speed at the instant it lands, in pixels per second:
+         * distance times the curve's exit slope, over the time it took. It goes
+         * straight into the frame's spring as a velocity — the clip stops and
+         * the viewer takes over at exactly the speed the clip had, so there is
+         * no seam here to tune, only the physics.
+         *
+         * Signed by the direction of travel, so stepping backwards nudges the
+         * viewer the other way.
+         */
+        const speed =
+          (-pushEnter * tuned.exitSlope) / (tuning.pushMs / 1000);
+        const v = speed * tuning.transfer;
+        // The excursion of a spring released at rest is proportional to the
+        // velocity it was released with, so the ceiling is applied here.
+        const cap = tuning.maxPx * tuned.carryRate;
+        carry.current.velocity = clamp(v, -cap, cap);
       }
     }
+
+    // The viewer getting back to where it was. Always stepped, so the return
+    // finishes even if the next shot arrives on top of it.
+    if (carry.current.value !== 0 || carry.current.velocity !== 0)
+      stepSpring(carry.current, 0, dt, tuned.spring, REST.px);
 
     const dpr = dprRef.current;
     let moving = false;
@@ -1002,9 +1382,9 @@ export default function MediaLayer() {
           // rail. Either way this is the same element that was on the deck.
           target = stage.mobile
             ? railCard(0, cpv, stage, reduced)
-            : caseFrame(cpv, shotShapes, stage);
+            : caseFrame(cpv, shotShapes, stage, frameFixed);
         } else {
-          target = dropped(deck, i, reduced);
+          target = tidied(deck, deckOrigin(stage, piDeck), reduced);
         }
       } else if (dragging) {
         /**
@@ -1038,6 +1418,14 @@ export default function MediaLayer() {
        * two players swapping rather than one adapting. The lag is the point.
        */
       const morphing = mode === "case" && i === sel;
+      /**
+       * True only while the card is still flying in from the deck. Latched off
+       * the first shot the route change was seen on, rather than off `cp` at
+       * effect time, so it does not depend on whether this layer's effect or
+       * the page's `cp.set(0)` runs first.
+       */
+      const arriving =
+        settling.current && Math.round(cpv) === arrivalShot.current;
       const animate =
         !prime && !reduced && (settling.current || mode === "home" || morphing);
       /**
@@ -1049,7 +1437,7 @@ export default function MediaLayer() {
       let config: SpringConfig;
       if (mode === "case")
         config = i === sel
-          ? settling.current
+          ? arriving
             ? SPRING.handoff
             : SPRING.morph
           : SPRING.drop;
@@ -1057,24 +1445,68 @@ export default function MediaLayer() {
       else if (atBack) config = SPRING.toBack;
       else config = SPRING.deck;
 
+      /**
+       * The viewer changing shape on the crossing's clock rather than its own.
+       *
+       * Only while a push is actually running, and never during the arrival
+       * from the deck — that one is a spring by design and has no push to
+       * borrow a clock from. It ends at exactly the target, so the spring picks
+       * up from a standstill on the right value and has nothing left to do.
+       */
+      const onPushClock =
+        morphing && !arriving && morphE >= 0 && morphFrom.current !== null;
+
       for (const field of FIELDS) {
-        const to = target[field];
-        if (animate) {
+        const shaped = onPushClock && MORPH_SET.has(field);
+        const to = shaped
+          ? lerp(morphFrom.current![field], target[field], morphE)
+          : target[field];
+        if (animate && !shaped) {
           stepSpring(s[field], to, dt, config);
           if (s[field].value !== to || s[field].velocity !== 0) moving = true;
         } else {
           snapSpring(s[field], to);
         }
-        // The dip rides on top of the morph rather than replacing it, so the
-        // frame keeps changing shape underneath while the viewer flinches.
+        /**
+         * The nudge rides on top of the morph rather than replacing it, so the
+         * frame keeps changing shape underneath while it is being shoved. It is
+         * added to x rather than multiplied into scale — the arriving picture
+         * travels sideways, so what it hands over is sideways momentum.
+         */
         let out =
-          field === "scale" && mode === "case" && i === sel
-            ? s[field].value * bump.current.value
+          field === "x" && mode === "case" && i === sel
+            ? s[field].value + carry.current.value
             : s[field].value;
         // Anything that gets laid out has to land on the pixel grid.
         if (LAYOUT_FIELDS.has(field)) out = Math.round(out * dpr) / dpr;
         v[field].set(out);
       }
+      /**
+       * The shadow, per frame, because it has to be able to leave.
+       *
+       * Held at full strength for everything at rest, so on the deck this
+       * writes the same constant string every frame and costs nothing. It only
+       * moves while a card is fading out behind an opening project, where it
+       * runs ahead of the fade so the stack squares up flat rather than piling
+       * six shadows into one slot.
+       */
+      if (mode === "case" && i === sel) v.shadow.set(SHADOW.device);
+      else {
+        const front = mode === "home" && i === nearIndex;
+        const shade = clamp(
+          (v.opacity.get() - TIDY.shadowGoneAt) / (1 - TIDY.shadowGoneAt),
+          0,
+          1,
+        );
+        v.shadow.set(
+          shade >= 1
+            ? front
+              ? SHADOW.cardFront
+              : SHADOW.cardBack
+            : deckShadow(front, shade),
+        );
+      }
+
       // On a project page the geometry owns stacking outright. On home it is
       // decided in the second pass below, once the stack's edge is known.
       if (mode !== "home") v.z.set(target.z);
@@ -1304,16 +1736,14 @@ export default function MediaLayer() {
                 zIndex: v.z,
                 transformPerspective: perspective,
                 transformOrigin: "50% 50%",
-                background: isSelected ? "var(--device)" : undefined,
-                // The viewer gets a wider, softer shadow than a deck card —
-                // it is a single object on an empty stage rather than one of a
-                // pile, so the shadow is doing the work of lifting it off the
-                // page rather than separating it from its neighbours.
-                boxShadow: isSelected
-                  ? SHADOW.device
-                  : isFront
-                    ? SHADOW.cardFront
-                    : SHADOW.cardBack,
+                background: isSelected ? "var(--viewer)" : undefined,
+                // Written by the frame loop. The viewer gets a wider, softer
+                // shadow than a deck card — it is a single object on an empty
+                // stage rather than one of a pile, so the shadow is lifting it
+                // off the page rather than separating it from its neighbours —
+                // and a card tidying itself away puts its shadow down as it
+                // goes, which a value picked here could not express.
+                boxShadow: v.shadow,
                 pointerEvents: grabbable ? "auto" : "none",
                 cursor: grabbable ? "grab" : undefined,
                 // Vertical stays with the page so the deck still scrolls on a
@@ -1338,6 +1768,14 @@ export default function MediaLayer() {
                 project={project}
                 radius={v.innerRadius}
                 scrim={v.scrim}
+                pushIn={pushIn}
+                pushOut={pushOut}
+                pushFrom={isSelected ? pushFrom : -1}
+                contain={isSelected && frameFixed}
+                clipIn={isSelected ? clipIn : null}
+                clipOut={isSelected ? clipOut : null}
+                viewer={isSelected}
+                armed={!isSelected || armed}
                 wantsVideo={wantsVideo}
                 activeShot={isSelected ? shotIndex : 0}
                 playing={isSelected || isFront}
@@ -1382,8 +1820,63 @@ export default function MediaLayer() {
  */
 const SHOT_WINDOW = 1;
 
-/** The descent of the viewer's dip. Eased at both ends, so it is pressed. */
-const BUMP_EASE = cubicBezier(GENTLE[0], GENTLE[1], GENTLE[2], GENTLE[3]);
+/**
+ * A motion value that is always 0, for clips taking no part in a push.
+ *
+ * Shared and never written. It exists so a clip's position can be a MotionValue
+ * in every case, rather than each one having to derive its own with a hook it
+ * would only need some of the time.
+ */
+const ZERO = motionValue(0);
+
+/** A clip's drawn size, in the card's own pixels. */
+type Box = { w: number; h: number };
+
+/**
+ * Where and how big to draw one clip.
+ *
+ * Filling the viewer, it overhangs by a pixel on every side — sized to exactly
+ * 100% it lands on fractional pixels as the frame morphs, and the sliver it
+ * fails to cover shows the card's own dark background as a crawling edge.
+ *
+ * At a fixed size it is centred on the viewer instead and takes a little
+ * overscan for the same reason: the two clips stay exactly adjacent by
+ * construction, but the viewer's edges are being animated by a spring while
+ * their positions come off a curve, and the two agree only to within a pixel
+ * or so at any given frame.
+ */
+function clipBox(size: Box | null): React.CSSProperties {
+  if (!size)
+    return {
+      top: -1,
+      left: -1,
+      width: "calc(100% + 2px)",
+      height: "calc(100% + 2px)",
+    };
+  /**
+   * The same single pixel the filling case overhangs by.
+   *
+   * It has to match: the clip hands over from one to the other the moment the
+   * push lands, and a different overscan would be a different crop — a small
+   * jump in the picture at exactly the moment it is supposed to be settling.
+   */
+  const over = 1;
+  return {
+    top: "50%",
+    left: "50%",
+    width: size.w + over * 2,
+    height: size.h + over * 2,
+    marginTop: -(size.h / 2 + over),
+    marginLeft: -(size.w / 2 + over),
+  };
+}
+
+/**
+ * The push curve, its exit slope and the carry spring's excursion rate all
+ * live in `lib/tuning.ts` rather than here, because all three are derived from
+ * numbers that get dragged on a slider — they have to be able to change without
+ * a reload, and a module constant cannot.
+ */
 
 /**
  * Fields that drive layout rather than a transform, and so have to land on
@@ -1399,6 +1892,26 @@ const BUMP_EASE = cubicBezier(GENTLE[0], GENTLE[1], GENTLE[2], GENTLE[3]);
 const LAYOUT_FIELDS = new Set(["w", "h", "radius", "pad", "innerRadius"]);
 
 /**
+ * The fields that describe the viewer's shape and where it sits.
+ *
+ * These are the ones the crossing can drive directly instead of springing —
+ * everything else about the selected card is constant on a project page
+ * (scale 1, opacity 1, square to the viewer), so there is nothing else for a
+ * morph to be doing.
+ */
+const MORPH_FIELDS = [
+  "x",
+  "y",
+  "w",
+  "h",
+  "radius",
+  "pad",
+  "innerRadius",
+] as const satisfies readonly (typeof FIELDS)[number][];
+
+const MORPH_SET: ReadonlySet<string> = new Set(MORPH_FIELDS);
+
+/**
  * One shot's clip.
  *
  * No controls, no chrome: muted, looping, inline, and played or paused from
@@ -1408,12 +1921,31 @@ const LAYOUT_FIELDS = new Set(["w", "h", "radius", "pad", "innerRadius"]);
  */
 function ShotClip({
   shot,
-  active,
-  visible,
+  role,
+  playing,
+  armed,
+  contain,
+  size,
+  x,
 }: {
   shot: Shot;
-  active: boolean;
-  visible: boolean;
+  /**
+   * What this clip is doing right now: arriving, leaving, or neither.
+   *
+   * It replaced a plain `active` flag because leaving is its own state. A
+   * departing clip is still on screen for the length of the push and has to
+   * keep running while it is.
+   */
+  role: "in" | "out" | "idle";
+  /** Whether this card's clips should be running at all. */
+  playing: boolean;
+  /** Whether it may start yet — false while it is still crossing. */
+  armed: boolean;
+  /** Fit inside the viewer rather than filling it. */
+  contain: boolean;
+  /** Drawn size, or null to fill the viewer. */
+  size: Box | null;
+  x: MotionValue<number>;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
 
@@ -1421,28 +1953,60 @@ function ShotClip({
     const el = ref.current;
     if (!el) return;
     el.muted = true;
-    if (active) {
+    if (role === "in") {
+      if (!playing) return;
+      if (!armed) {
+        // Arrived but not started: parked on its first frame while it crosses.
+        el.pause();
+        el.currentTime = 0;
+        return;
+      }
       // Always from the top. A clip that carries on from where it was left is
       // showing the middle of itself to someone arriving at its beginning.
       el.currentTime = 0;
       const played = el.play();
       if (played && played.catch) played.catch(() => {});
+    } else if (role === "out") {
+      /**
+       * Held, not stopped and not rewound.
+       *
+       * Pausing keeps the frame it was on — the picture you were just looking
+       * at is the picture that leaves. What it must NOT do is touch
+       * `currentTime`: winding it back here is what made a clip cut to its
+       * first frame in full view on its way out.
+       */
+      el.pause();
     } else {
       el.pause();
       // Wound back rather than merely stopped, so nothing is running on in the
       // background and every arrival is the same arrival.
       el.currentTime = 0;
     }
-  }, [active]);
+  }, [role, playing, armed]);
 
   return (
-    <video
+    <motion.video
       ref={ref}
       poster={media(shot.poster)}
       draggable={false}
       muted
       loop
       playsInline
+      /**
+       * Decorative, and nothing about it is a media player.
+       *
+       * A <video> is focusable and remotely playable by default, and that is
+       * enough for Safari to put its own transport controls over the top —
+       * scrubber, AirPlay, picture-in-picture — on a clip that is meant to be
+       * part of a page rather than something to operate. Taking it out of the
+       * tab order also keeps the arrow keys stepping shots rather than seeking.
+       */
+      tabIndex={-1}
+      controls={false}
+      disablePictureInPicture
+      disableRemotePlayback
+      controlsList="nodownload nofullscreen noremoteplayback"
+
       // Metadata only. The file itself is fetched when playback starts, so a
       // shot two steps away costs a few kilobytes rather than a few megabytes.
       preload="metadata"
@@ -1458,16 +2022,23 @@ function ShotClip({
          * gap to see through.
          */
         position: "absolute",
-        top: -1,
-        left: -1,
-        width: "calc(100% + 2px)",
-        height: "calc(100% + 2px)",
-        objectFit: "cover",
+        ...clipBox(size),
+        ...(contain
+          ? { top: 0, left: 0, width: "100%", height: "100%", margin: 0 }
+          : null),
+        objectFit: contain ? "contain" : "cover",
         display: "block",
-        // A cut, not a dissolve: two clips fading through each other reads as
-        // a slideshow, and mid-fade both are half-there and neither is legible.
-        opacity: visible ? 1 : 0,
-        zIndex: 2,
+        x,
+        /**
+         * Never a dissolve. Two clips fading through each other reads as a
+         * slideshow, and mid-fade both are half-there and neither is legible —
+         * so a clip taking part in the change is fully opaque throughout, and
+         * one that is not is simply absent. The push is what carries it.
+         */
+        opacity: role === "idle" ? 0 : 1,
+        // The arriving clip covers the departing one, whichever way the
+        // sequence is being walked.
+        zIndex: role === "in" ? 3 : 2,
         pointerEvents: "none",
       }}
     >
@@ -1475,7 +2046,7 @@ function ShotClip({
         <source src={media(shot.srcWebm)} type="video/webm" />
       ) : null}
       {shot.src ? <source src={media(shot.src)} type="video/mp4" /> : null}
-    </video>
+    </motion.video>
   );
 }
 
@@ -1483,6 +2054,14 @@ function CardFace({
   project,
   radius,
   scrim,
+  contain,
+  clipIn,
+  clipOut,
+  viewer,
+  armed,
+  pushIn,
+  pushOut,
+  pushFrom,
   wantsVideo,
   activeShot,
   playing,
@@ -1491,6 +2070,36 @@ function CardFace({
   project: (typeof projects)[number];
   radius: MotionValue<number>;
   scrim: MotionValue<number>;
+  /**
+   * Where the arriving and departing clips sit during a push, in pixels.
+   *
+   * Two values rather than one derived from the other, so no clip has to work
+   * out its own role from a hook — the frame loop writes both and each clip is
+   * simply handed the one that applies to it.
+   */
+  pushIn: MotionValue<number>;
+  pushOut: MotionValue<number>;
+  /** The shot being pushed out, or -1 when nothing is moving. */
+  pushFrom: number;
+  /**
+   * The size to draw the arriving and departing clips at, or null to fill the
+   * viewer. Fixed for the whole crossing, so the morph reads as the viewer
+   * opening over a still picture rather than as the picture zooming.
+   */
+  clipIn: Box | null;
+  clipOut: Box | null;
+  /** True for the one card acting as the project page's viewer. */
+  viewer: boolean;
+  /** Whether the clip on screen may run yet — false through a crossing. */
+  armed: boolean;
+  /**
+   * Fit the clip inside the viewer rather than filling it.
+   *
+   * Only ever true when the viewer has stopped taking its shape from the clip.
+   * While it morphs the two agree by construction and `cover` costs nothing;
+   * once it does not, `cover` would crop a portrait recording down to a strip.
+   */
+  contain: boolean;
   wantsVideo: boolean;
   /** 0 is the intro, which shows the project's own clip; 1+ are its shots. */
   activeShot: number;
@@ -1499,6 +2108,23 @@ function CardFace({
   showBar: boolean;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  // The intro clip is shot 0, so it takes part in a push like any other: it
+  // arrives when the viewer comes back to the overview and leaves when the
+  // first shot pushes it out.
+  const introIn = activeShot === 0;
+  const introOut = pushFrom === 0 && !introIn;
+  const introX = introIn ? pushIn : introOut ? pushOut : ZERO;
+  /**
+   * Shot 0's clip is subject to the same rule as every other: on screen only
+   * while it is arriving or leaving.
+   *
+   * It had no opacity of its own, so it sat painted at full strength under the
+   * whole sequence — invisible while the shots covered it, and the thing you
+   * saw through any gap between them. A gap should show the viewer's own
+   * surface; showing the project's hero clip instead reads as a rendering
+   * fault, because it is one.
+   */
+  const introVisible = introIn || introOut ? 1 : 0;
 
   useEffect(() => {
     const el = videoRef.current;
@@ -1506,14 +2132,38 @@ function CardFace({
     // iOS refuses to autoplay unless the element is muted, and without
     // playsInline it takes the video fullscreen instead of playing in place.
     el.muted = true;
-    if (playing && activeShot === 0) {
+    if (!playing) return;
+    /**
+     * The same three states every other clip has: arriving, leaving, gone.
+     *
+     * Leaving is the one that matters and the one this was missing. The intro
+     * clip is shot 0, so stepping off the overview makes it the DEPARTING clip
+     * — on screen, sliding out, and still being watched. Treating that as "not
+     * the active shot" and winding it back to zero did exactly what it says:
+     * the picture cut to its first frame in full view, mid-exit.
+     *
+     * It is left alone while it leaves, and reset only once it is gone — which
+     * is the same commit that takes it to zero opacity, so the reset cannot be
+     * seen.
+     */
+    // Held on its last frame while it leaves, never rewound here.
+    if (introOut) {
+      el.pause();
+      return;
+    }
+    if (introIn && armed) {
       const played = el.play();
       if (played && played.catch) played.catch(() => {});
-    } else if (!el.paused) {
+    } else if (introIn) {
+      // Arrived but not started: parked on its first frame while it crosses.
+      el.pause();
+      el.currentTime = 0;
+    } else {
       // A clip that is not on screen should not be burning a decoder.
       el.pause();
+      el.currentTime = 0;
     }
-  }, [wantsVideo, playing, activeShot]);
+  }, [wantsVideo, playing, introIn, introOut, armed]);
 
   return (
     <motion.div
@@ -1523,82 +2173,152 @@ function CardFace({
         height: "100%",
         borderRadius: radius,
         overflow: "hidden",
-        // Placeholder scaffolding — a stripe fill standing in for real media.
-        background: stripeFill(project.hue),
-        backgroundSize: "420px 100%",
-        // Belt and braces with the overhang above: whatever the clip does not
-        // cover is the page colour rather than a dark edge, so a seam would be
-        // invisible instead of merely thin.
-        backgroundColor: project.hue === undefined ? "var(--page)" : undefined,
+        /**
+         * As the viewer, a plain white surface — and it is meant to be SEEN.
+         *
+         * The clips are drawn at a fixed size while the frame morphs around
+         * them, and two fixed-size pictures cannot tile a window that is
+         * changing shape, so on a large morph there is genuinely a moment with
+         * bare frame either side of the picture. White is the choice that makes
+         * that moment read as the viewer opening onto empty space rather than
+         * as a hole.
+         *
+         * On the deck it is placeholder scaffolding instead — a stripe fill
+         * standing in for real media, with the page colour behind it so a seam
+         * at the edge is invisible rather than merely thin.
+         */
+        background: viewer ? "var(--viewer)" : stripeFill(project.hue),
+        backgroundSize: viewer ? undefined : "420px 100%",
+        backgroundColor: viewer
+          ? undefined
+          : project.hue === undefined
+            ? "var(--page)"
+            : undefined,
       }}
     >
-      {wantsVideo ? (
-        <video
-          ref={videoRef}
-          poster={asset(project.poster)}
-          draggable={false}
-          autoPlay
-          muted
-          loop
-          playsInline
-          preload="metadata"
-          style={{
-            // Overhangs by a pixel — see the shot clips below.
-            position: "absolute",
-            top: -1,
-            left: -1,
-            width: "calc(100% + 2px)",
-            height: "calc(100% + 2px)",
-            objectFit: "cover",
-            display: "block",
-          }}
-        >
-          {project.srcWebm ? (
-            <source src={media(project.srcWebm)} type="video/webm" />
-          ) : null}
-          {project.src ? (
-            <source src={media(project.src)} type="video/mp4" />
-          ) : null}
-        </video>
-      ) : project.poster ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={asset(project.poster)}
-          alt=""
-          draggable={false}
-          style={{
-            position: "absolute",
-            top: -1,
-            left: -1,
-            width: "calc(100% + 2px)",
-            height: "calc(100% + 2px)",
-            objectFit: "cover",
-          }}
-        />
-      ) : null}
-
       {/*
-        The shots' own clips, layered over the card.
+        The picture, as one layer.
 
-        Deliberately NOT by swapping the source on the element above: that one
-        came off the deck and is still playing the clip it was playing there,
-        and changing its source would tear that down — which is the one thing
-        this whole layer exists to avoid. It stays as the intro's face and the
-        shots stack on top of it.
+        The clips inside it move independently during a push; this groups them
+        as the footage, below the scrim and the window chrome, which belong to
+        the frame rather than to what is playing in it. It is also what keeps
+        the whole picture transparent to the pointer in one place.
       */}
-      {project.shots.map((shot, k) => {
-        const index = k + 1;
-        if (!shot.src && !shot.srcWebm) return null;
-        if (Math.abs(index - activeShot) > SHOT_WINDOW) return null;
-        return (
-          <ShotClip
-            key={shot.n}
-            shot={shot}
-            active={playing && index === activeShot}
-            visible={index === activeShot}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 2,
+          /**
+           * Transparent to the pointer, and it has to be said explicitly.
+           *
+           * A positive z-index puts this above the card's own <Link>, which
+           * carries no z-index of its own — so without this the picture eats
+           * every click and the deck stops opening anything. The clips inside
+           * inherit it, which is what they want too: the link is the whole
+           * card, not a region of it.
+           */
+          pointerEvents: "none",
+        }}
+      >
+        {wantsVideo ? (
+          <motion.video
+            ref={videoRef}
+            poster={asset(project.poster)}
+            draggable={false}
+            autoPlay
+            muted
+            loop
+            playsInline
+        /**
+         * Decorative, and nothing about it is a media player.
+         *
+         * A <video> is focusable and remotely playable by default, and that is
+         * enough for Safari to put its own transport controls over the top —
+         * scrubber, AirPlay, picture-in-picture — on a clip that is meant to be
+         * part of a page rather than something to operate. Taking it out of the
+         * tab order also keeps the arrow keys stepping shots rather than seeking.
+         */
+        tabIndex={-1}
+        controls={false}
+        disablePictureInPicture
+        disableRemotePlayback
+        controlsList="nodownload nofullscreen noremoteplayback"
+
+            preload="metadata"
+            style={{
+              position: "absolute",
+              ...clipBox(introIn ? clipIn : introOut ? clipOut : null),
+              opacity: introVisible,
+              // Contained, the overhang would show as a sliver of the clip
+              // outside its own letterbox — it only exists to hide sub-pixel
+              // seams under `cover`, where there is nothing behind it anyway.
+              ...(contain
+                ? { top: 0, left: 0, width: "100%", height: "100%", margin: 0 }
+                : null),
+              objectFit: contain ? "contain" : "cover",
+              display: "block",
+              x: introX,
+              // The arriving clip covers the departing one, whichever way the
+              // sequence is being walked.
+              zIndex: introIn ? 3 : 2,
+            }}
+          >
+            {project.srcWebm ? (
+              <source src={media(project.srcWebm)} type="video/webm" />
+            ) : null}
+            {project.src ? (
+              <source src={media(project.src)} type="video/mp4" />
+            ) : null}
+          </motion.video>
+        ) : project.poster ? (
+          <motion.img
+            src={asset(project.poster)}
+            alt=""
+            draggable={false}
+            style={{
+              position: "absolute",
+              ...clipBox(introIn ? clipIn : introOut ? clipOut : null),
+              opacity: introVisible,
+              ...(contain
+                ? { top: 0, left: 0, width: "100%", height: "100%", margin: 0 }
+                : null),
+              objectFit: contain ? "contain" : "cover",
+              x: introX,
+              zIndex: introIn ? 3 : 2,
+            }}
           />
-        );
-      })}
+        ) : null}
+
+        {/*
+          The shots' own clips, layered over the card.
+
+          Deliberately NOT by swapping the source on the element above: that one
+          came off the deck and is still playing the clip it was playing there,
+          and changing its source would tear that down — which is the one thing
+          this whole layer exists to avoid. It stays as the intro's face and the
+          shots stack on top of it.
+        */}
+        {project.shots.map((shot, k) => {
+          const index = k + 1;
+          if (!shot.src && !shot.srcWebm) return null;
+          if (Math.abs(index - activeShot) > SHOT_WINDOW) return null;
+          const role =
+            index === activeShot ? "in" : index === pushFrom ? "out" : "idle";
+          return (
+            <ShotClip
+              key={shot.n}
+              shot={shot}
+              role={role}
+              armed={armed}
+              contain={contain}
+              size={role === "in" ? clipIn : role === "out" ? clipOut : null}
+              playing={playing}
+              x={role === "in" ? pushIn : role === "out" ? pushOut : ZERO}
+            />
+          );
+        })}
+      </div>
 
       {/*
         Depth wash.

@@ -136,7 +136,9 @@ export default function CaseMobile({ project }: { project: Project }) {
               fontFamily: "var(--font-mono)",
               fontSize: 9.5 * ts,
               letterSpacing: "0.14em",
-              color: "oklch(0.28 0.006 60 / 0.6)",
+              // Page text, so it has to follow the theme.
+              color: "var(--ink)",
+              opacity: 0.6,
             }}
           >
             RETURN TO WORK
@@ -221,7 +223,7 @@ function RailCard({
         scrollSnapAlign: "center",
         background: light ? "var(--return-card)" : "var(--shot-empty)",
         boxShadow: light
-          ? "inset 0 0 0 1px oklch(0.18 0.006 60 / 0.12)"
+          ? "inset 0 0 0 1px var(--frame-edge)"
           : SHADOW.carousel,
         transformOrigin: "50% 50%",
         cursor: onClick ? "pointer" : "default",
