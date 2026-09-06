@@ -463,8 +463,16 @@ function ShotTitle({
   return (
     <motion.div
       initial={false}
-      animate={{ opacity: on ? 1 : 0, y: on ? 0 : (active > index ? -14 : 14) * stage.s }}
-      transition={SPRING.morph}
+      /**
+       * Sideways, and in the same direction as the picture: a title for a shot
+       * already passed leaves to the left, one not yet reached waits on the
+       * right — which is exactly where its clip is.
+       */
+      animate={{
+        opacity: on ? 1 : 0,
+        x: on ? 0 : (active > index ? -1 : 1) * CASE.titleShift * stage.s,
+      }}
+      transition={SPRING.title}
       style={{
         position: "absolute",
         left: 0,

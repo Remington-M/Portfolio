@@ -175,6 +175,32 @@ export const SPRING = {
    * really is nothing — the tight `REST.unit` the dip needed does not apply.
    */
   carry: springConfig(85, 0.55),
+  /**
+   * The shot title changing under the viewer.
+   *
+   * A spring rather than the push's own curve, and stiffer than anything else
+   * here. Put on the push's clock it was technically in step and felt late:
+   * that curve is an ease-in-out chosen for a picture crossing a whole viewer
+   * width, and a short line of type moving 34px does not need a slow start —
+   * it just reads as lag. A stiff critically damped spring front-loads the
+   * move, so the caption is legible almost immediately and settles under the
+   * picture rather than alongside it.
+   */
+  title: springConfig(300, 1),
+  /**
+   * The progress ticks, widening into place.
+   *
+   * It shares the carry's damping ratio deliberately. The viewer's signature at
+   * the end of a shot change is a small overshoot and a settle, and the tick
+   * row is the only other thing on screen that marks the same moment — giving
+   * it the same character makes it read as part of that event rather than as a
+   * separate widget keeping score.
+   *
+   * Much stiffer, because it is a 16px move rather than a whole viewer, and
+   * because it was a 450ms CSS ease before this and the lag was the complaint.
+   * At 0.55 the active tick runs about 2px past its width and comes back.
+   */
+  tick: springConfig(320, 0.55),
   /** Soft UI moves — ticks, labels. */
   ui: springConfig(400, 1.291, 0.6),
 } as const;
@@ -425,6 +451,19 @@ export const CASE = {
   centreY: 430 / 900,
   /** Where the shot title and its meta line sit, clear of the largest frame. */
   captionY: 762 / 900,
+  /**
+   * How far the shot title travels as it changes, authored against the stage.
+   *
+   * Sideways, in the same direction the picture goes, because it is a caption
+   * for something that slides — a title rising and falling under a viewer whose
+   * contents move horizontally reads as a second, unrelated animation happening
+   * to coincide.
+   *
+   * Much shorter than the push, which crosses a whole viewer width. The title
+   * is a short centred line with nothing to hide behind, so it only has to
+   * suggest the direction rather than travel it.
+   */
+  titleShift: 34,
   /**
    * Space kept either side of the stage, so a wide frame never runs to the edge.
    *

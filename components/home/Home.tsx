@@ -187,10 +187,27 @@ export default function Home() {
     registerDeckScroll((value: number) => {
       const el = scrollRef.current;
       if (!el) return;
+      /**
+       * A deck position can be anywhere on the ring; a scroll position cannot.
+       *
+       * Whole laps are moved off the value and out of the animation together,
+       * which is invisible — a position and that position plus a lap paint
+       * identically — and leaves a number the scroller can actually hold.
+       * Going forwards this was already handled after the fact, by the lap
+       * rewind in `onScroll`. Going backwards there was nothing: the scroller
+       * was simply written a negative card, which resolves to the hold before
+       * the first one, and the deck stuck there.
+       */
+      const laps = Math.floor(value / n);
+      if (laps !== 0) {
+        rebaseDeck(laps);
+        value -= laps * n;
+        pTarget.set(value);
+      }
       el.scrollTop = deckTop(value);
     });
     return () => registerDeckScroll(null);
-  }, [registerDeckScroll, deckTop]);
+  }, [registerDeckScroll, deckTop, n, rebaseDeck, pTarget]);
 
   useMotionValueEvent(p, "change", (v) => {
     // Remember on every change rather than on click, so leaving by the browser
@@ -234,10 +251,31 @@ export default function Home() {
       if (back === 0) return;
 
       if (back <= DECK_MOTION.reverseMax) {
-        el.scrollTo({
-          top: deckTop(i),
-          behavior: reduced ? "auto" : "smooth",
-        });
+        const to = current - back;
+        if (to >= 0) {
+          el.scrollTo({
+            top: deckTop(to),
+            behavior: reduced ? "auto" : "smooth",
+          });
+          return;
+        }
+        /**
+         * Reversing off the bottom of the scroller.
+         *
+         * The deck is a ring and the scroller is a line, and the line stops at
+         * the first card — so a single step back from it has nowhere to scroll
+         * to. Aiming at the LAST card's scroll position instead is a five-card
+         * journey forwards, which is what this used to do: ask for one step
+         * back from the top of the stack and watch the whole deck riffle past
+         * in the wrong direction.
+         *
+         * The layer drives it, exactly as it does for a long way round, and
+         * takes the deck to −1. That paints as the last card coming to the
+         * front, because depth is measured around the ring and −1 and n−1 are
+         * the same place. The commit puts the scroller back in range.
+         */
+        deckDriven.current = true;
+        pTarget.set(to);
         return;
       }
 
@@ -253,6 +291,57 @@ export default function Home() {
     },
     [deckTop, reduced, pTarget, deckDriven, n],
   );
+
+  /**
+   * Left and right step the deck.
+   *
+   * The project page has walked its shots with the arrows all along; the deck
+   * is the same kind of sequence and had nothing but the wheel and the ledger.
+   * Horizontal, because that is the axis the cards travel on — a card leaves to
+   * the side and slots in behind, whatever the scroller underneath is doing.
+   *
+   * Up and down are left alone. They belong to the scroller, and the deck's
+   * whole design is that scroll position IS deck position; taking them over
+   * would put two different meanings on one gesture.
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      // Leave typing and activating alone.
+      if (
+        target &&
+        (target.isContentEditable ||
+          /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
+      )
+        return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+
+      const el = scrollRef.current;
+      if (!el) return;
+      e.preventDefault();
+
+      /**
+       * While the hero is still on screen the deck has not arrived yet, so the
+       * first press brings it in rather than skipping a card nobody has seen.
+       */
+      if (pi.get() < 0.999) {
+        el.scrollTo({
+          top: deckTop(Math.round(pTarget.get())),
+          behavior: reduced ? "auto" : "smooth",
+        });
+        return;
+      }
+
+      const step = e.key === "ArrowRight" ? 1 : -1;
+      const current = Math.round(pTarget.get());
+      // `jumpTo` owns the ring: one step back reverses, one step forward
+      // carries on the way the deck is built to move.
+      jumpTo((((current + step) % n) + n) % n);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [jumpTo, deckTop, pi, pTarget, reduced, n]);
 
   // Hero drifts away as the deck arrives. Driven straight off the intro
   // progress, so no re-render happens while scrolling.

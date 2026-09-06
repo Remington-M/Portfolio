@@ -1,10 +1,17 @@
 "use client";
 
-import { HOUSE_CSS } from "@/lib/design";
+import { motion } from "motion/react";
+import { SPRING } from "@/lib/design";
 
 /**
  * The tick row: active tick wide, immediate neighbours faint, the rest fainter.
  * Used for deck position on mobile home and shot position on project pages.
+ *
+ * The width is a spring rather than a CSS transition, and not for the sake of
+ * it: the row marks the same moment the viewer does, and the viewer ends its
+ * move by running slightly past and settling. A tick that eases to a stop next
+ * to that reads as a separate widget keeping score. Sharing the character —
+ * `SPRING.tick` carries the carry's damping ratio — makes the two one event.
  */
 export default function Ticks({
   count,
@@ -29,14 +36,16 @@ export default function Ticks({
       {Array.from({ length: count }, (_, i) => {
         const d = Math.abs(i - active);
         return (
-          <button
+          <motion.button
             key={i}
             type="button"
             onClick={() => onJump(i)}
             aria-label={labels(i)}
             aria-current={d === 0 ? "true" : undefined}
+            initial={false}
+            animate={{ width: d === 0 ? 26 : 10 }}
+            transition={SPRING.tick}
             style={{
-              width: d === 0 ? 26 : 10,
               height: 20,
               display: "flex",
               alignItems: "center",
@@ -45,7 +54,6 @@ export default function Ticks({
               background: "none",
               color: "inherit",
               cursor: "pointer",
-              transition: `width .45s ${HOUSE_CSS}`,
             }}
           >
             <span
@@ -54,10 +62,15 @@ export default function Ticks({
                 height: 1,
                 background: "currentColor",
                 opacity: d === 0 ? 0.72 : d === 1 ? 0.26 : 0.13,
-                transition: "opacity .35s ease",
+                /**
+                 * Still a tween. Opacity has nowhere to overshoot to — past 1
+                 * it simply clips — so a spring would spend its character on
+                 * something invisible. Shortened to keep pace with the width.
+                 */
+                transition: "opacity .26s ease",
               }}
             />
-          </button>
+          </motion.button>
         );
       })}
     </div>

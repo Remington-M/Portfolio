@@ -36,7 +36,6 @@ import {
   caseFrame,
   deckCard,
   deckCardSize,
-  deckOrigin,
   deckThrow,
   railCard,
   type Geo,
@@ -241,8 +240,15 @@ function makeValues(): CardValues {
 /**
  * Where a card goes when it isn't the one being opened.
  *
- * Not away — in. It squares up on the slot the opened card is leaving: same
- * place, same size, no lean, no scatter. Six cards resolving onto one line
+ * Not away — in. It squares up on the box the opened card is going TO: same
+ * place, same size, no lean, no scatter.
+ *
+ * Going to, not leaving from. It converged on the deck's own origin at first,
+ * which is where the opened card WAS — so the stack tidied itself into a neat
+ * pile back at the home page's deck position, at the deck's card size, while
+ * the card it was meant to be stacking behind had already flown off to the
+ * project page and become a different shape. Nothing lined up, because the two
+ * were aiming at different places. Six cards resolving onto one line
  * reads as the stack tidying itself into a single clean card behind the viewer,
  * and it moves everything TOWARD the card the eye is following rather than
  * throwing five of them off the bottom of the screen away from it.
@@ -253,20 +259,19 @@ function makeValues(): CardValues {
  * Leaving the page is the one place a card really does fade out, and its shadow
  * goes ahead of it — see `TIDY.shadowGoneAt`.
  */
-function tidied(
-  geo: Geo,
-  origin: { cx: number; cy: number },
-  reduced: boolean,
-): Geo {
+function tidied(geo: Geo, to: Geo, reduced: boolean): Geo {
   if (reduced) return { ...geo, opacity: 0 };
   return {
-    ...geo,
-    x: origin.cx - geo.w / 2,
-    y: origin.cy - geo.h / 2,
+    // Position AND size — the whole box the viewer is going to occupy.
+    ...to,
     rotate: 0,
     rotateY: 0,
     scale: 1,
     opacity: 0,
+    // Its own wash, and its own place in the stack. The one thing it must not
+    // take from the viewer is the viewer's z, or it would land in front of it.
+    scrim: geo.scrim,
+    z: geo.z,
   };
 }
 
@@ -1377,15 +1382,13 @@ export default function MediaLayer() {
       );
       let target: Geo;
       if (mode === "case") {
-        if (i === sel) {
-          // Desktop steps through shots vertically; mobile swipes a horizontal
-          // rail. Either way this is the same element that was on the deck.
-          target = stage.mobile
-            ? railCard(0, cpv, stage, reduced)
-            : caseFrame(cpv, shotShapes, stage, frameFixed);
-        } else {
-          target = tidied(deck, deckOrigin(stage, piDeck), reduced);
-        }
+        // Desktop steps through shots vertically; mobile swipes a horizontal
+        // rail. Either way this is the same element that was on the deck — and
+        // it is also where every other card is headed.
+        const viewer = stage.mobile
+          ? railCard(0, cpv, stage, reduced)
+          : caseFrame(cpv, shotShapes, stage, frameFixed);
+        target = i === sel ? viewer : tidied(deck, viewer, reduced);
       } else if (dragging) {
         /**
          * No horizontal offset of its own: the drag is already moving this
