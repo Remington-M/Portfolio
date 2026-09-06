@@ -63,16 +63,16 @@ export default function Header({
     );
   }
 
+  /*
+    No name in the corner.
+
+    It was the left half of this bar on desktop and absent on mobile, which
+    already said it was not carrying much — the page is one person's work and
+    says so in the first line of the hero. What is left is the nav, so the bar
+    ends at the right rather than spanning.
+  */
   return (
-    <header style={frame}>
-      {/* The name is deliberately absent on mobile. */}
-      {!mobile ? (
-        <div style={{ ...typeStyle(TYPE.navName, ts), color: "var(--ink)" }}>
-          Remington McElhaney
-        </div>
-      ) : (
-        <span />
-      )}
+    <header style={{ ...frame, justifyContent: "flex-end" }}>
       <nav
         style={{
           ...typeStyle(TYPE.label, ts),
