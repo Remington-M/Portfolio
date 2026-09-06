@@ -230,19 +230,20 @@ export const projects: Project[] = [
     slug: "google-pixel",
     title: "Google Pixel & Android",
     /**
-     * One title and one date string, used by the ledger, the kicker, the YEAR
-     * field and the page <title>.
+     * The headline sets this on two lines; the ledger sets `title` on one.
      *
-     * No `displayTitle`: the authored break set it as two lines, which reads
-     * badly in the ledger and gave the row twice the height of every other one.
-     * A single line at both ends also means the shared title has no line breaks
-     * to reconcile as it travels.
-     *
-     * The date is the year it started rather than the span. `2016–2020` is
-     * accurate and is a lot of characters to hang off the end of a ledger row.
+     * They are allowed to differ. A break that suits a 56px headline in a
+     * 470px column is not the break that suits a 28px row in a list, and
+     * forcing them to agree made the ledger row twice the height of every
+     * other one.
      */
-    year: "2016",
-    yearLong: "2016",
+    displayTitle: ["Google Pixel", "& Android"],
+    /**
+     * One date string, used by the ledger, the kicker, the YEAR field and the
+     * page <title>.
+     */
+    year: "2016\u20132020",
+    yearLong: "2016\u20132020",
     overview:
       "I had the privilege to work on the Pixel\u00a01\u20135. Getting to build the foundation for Google\u2019s phone with a small design team was a highlight of my career.\n\nI was responsible for core system transitions, Google Assistant & Search integrations, branded moments, core infrastructure, physics based motion and much more!",
     collaborators: "Name Surname, Name Surname, Name Surname",
@@ -261,17 +262,11 @@ export const projects: Project[] = [
 ];
 
 /**
- * The title, broken exactly as it is meant to be set.
+ * The title as the HEADLINE sets it — one entry per line.
  *
- * One function because two places render it — the ledger row on the home page
- * and the headline on the project page — and the transition between them is
- * meant to be the same words travelling rather than one set of words being
- * replaced by another. If they wrapped differently the line breaks would have
- * to move mid-flight, which is the one thing a shared element cannot do
- * without giving the game away.
- *
- * So the ledger takes the authored break too, and a project without one is a
- * single line in both places.
+ * Only the case page uses this. The ledger sets `title` straight, on one line,
+ * because a break chosen for a 56px headline is not one that suits a row in a
+ * list. A project without an authored break is a single line either way.
  */
 export function titleLines(project: Project): readonly string[] {
   return project.displayTitle ?? [project.title];

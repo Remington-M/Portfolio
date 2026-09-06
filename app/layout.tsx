@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono } from "next/font/google";
 import { StageProvider } from "@/components/media/stage";
 import MediaLayer from "@/components/media/MediaLayer";
-import TitleLayer from "@/components/TitleLayer";
 import TunePanel from "@/components/TunePanel";
 import "./globals.css";
 
@@ -52,12 +51,6 @@ export default function RootLayout({
             deck through to a project page — the element is never remounted.
           */}
           <MediaLayer />
-          {/*
-            The project title, carried between the ledger and the headline.
-            Mounted beside the media layer and for the same reason: a shared
-            element cannot live on either of the pages it travels between.
-          */}
-          <TitleLayer />
           {/*
             Motion tuning, off unless asked for — `?tune` on any URL, or the
             T key. Renders nothing at all otherwise.

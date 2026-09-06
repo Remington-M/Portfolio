@@ -35,7 +35,7 @@ import { titleLines, type Project } from "@/lib/projects";
  * titles, the progress ticks and the return-to-deck ending.
  */
 export default function CaseDesktop({ project }: { project: Project }) {
-  const { cp, stage, registerTitleAnchor, titleFlying } = useStage();
+  const { cp, stage } = useStage();
   const reduced = useReducedMotion() ?? false;
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -124,6 +124,12 @@ export default function CaseDesktop({ project }: { project: Project }) {
   /**
    * One element of the intro arriving: up and in, `step` places down the order.
    *
+   * The title is the first of them now. It briefly travelled from the ledger
+   * instead — a shared element — which meant the two ends had to agree on
+   * their line breaks, and a break chosen for a 56px headline is not the one
+   * that suits a row in a list. Forcing them to agree cost more than the
+   * continuity was worth, so the headline simply arrives with everything else.
+   *
    * Spread rather than wrapped in a component so each element keeps its own
    * `style` — these are laid out by the column they sit in, and putting a
    * wrapper around each one would change that layout to animate it.
@@ -191,15 +197,13 @@ export default function CaseDesktop({ project }: { project: Project }) {
                 y: introY,
               }}
             >
-              <h1
-                /* The other end of the shared title — see `TitleLayer`. */
-                ref={(el) => registerTitleAnchor("headline", el)}
+              <motion.h1
+                {...rise(0)}
                 style={{
                   margin: 0,
                   ...typeStyle(TYPE.display, ts),
                   color: "var(--ink)",
                   textWrap: "pretty",
-                  visibility: titleFlying ? "hidden" : "visible",
                 }}
               >
                 {lines.map((line, i) => (
@@ -207,9 +211,9 @@ export default function CaseDesktop({ project }: { project: Project }) {
                     {line}
                   </span>
                 ))}
-              </h1>
+              </motion.h1>
               <motion.div
-                {...rise(0)}
+                {...rise(1)}
                 style={{
                   ...typeStyle(TYPE.body, ts),
                   color: "var(--ink-2)",
@@ -235,7 +239,7 @@ export default function CaseDesktop({ project }: { project: Project }) {
                 animate={{ scaleX: 1 }}
                 transition={{
                   duration: CASE.enter.ruleMs / 1000,
-                  delay: (CASE.enter.lead + CASE.enter.stagger) / 1000,
+                  delay: (CASE.enter.lead + 2 * CASE.enter.stagger) / 1000,
                   ease: [...HOUSE] as [number, number, number, number],
                 }}
                 style={{
@@ -246,7 +250,7 @@ export default function CaseDesktop({ project }: { project: Project }) {
                 }}
               />
               <motion.dl
-                {...rise(2)}
+                {...rise(3)}
                 style={{
                   display: "flex",
                   gap: 32 * ts,
