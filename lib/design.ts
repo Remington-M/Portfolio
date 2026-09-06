@@ -540,20 +540,22 @@ export const CASE = {
    * caption sat almost against the frame, and any change to either value moved
    * that gap without anyone noticing.
    *
-   * Larger than the space BELOW the caption, which is the opposite of what a
-   * caption usually wants. The viewer is 652 tall and there is not room under
-   * it for generous air on both sides, so the caption sits down with the tick
-   * row and the gap it needed is taken off the viewer's edge — where it was
-   * six pixels, and looked it.
+   * Much larger than the space BELOW the caption, and deliberately so. The
+   * caption and the tick row belong together — one names the shot, the other
+   * says which shot it is — so the gap that matters is the one separating that
+   * pair from the viewer, not the one inside it. 36 above, 9 below.
    */
-  captionGap: 30,
+  captionGap: 36,
   /**
    * How far the tick row sits above the bottom of the stage.
    *
-   * Was 46. Moving it down is what pays for `captionGap` without touching the
-   * viewer's size.
+   * Was 46, then 22. Back up a little, because the caption and the tick row
+   * are one group — the caption names the shot and the row says which shot it
+   * is — and 19px apart read as two separate things stranded under the viewer.
+   * Every pixel this gains, and every pixel `captionGap` gains, comes out of
+   * the space between them: 19px became 9.
    */
-  ticksInset: 22,
+  ticksInset: 26,
   /**
    * How far the shot title travels as it changes, authored against the stage.
    *
