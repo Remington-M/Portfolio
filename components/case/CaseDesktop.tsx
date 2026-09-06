@@ -35,7 +35,7 @@ import { titleLines, type Project } from "@/lib/projects";
  * titles, the progress ticks and the return-to-deck ending.
  */
 export default function CaseDesktop({ project }: { project: Project }) {
-  const { cp, stage } = useStage();
+  const { cp, stage, registerTitleAnchor, titleFlying } = useStage();
   const reduced = useReducedMotion() ?? false;
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -192,11 +192,14 @@ export default function CaseDesktop({ project }: { project: Project }) {
               }}
             >
               <h1
+                /* The other end of the shared title — see `TitleLayer`. */
+                ref={(el) => registerTitleAnchor("headline", el)}
                 style={{
                   margin: 0,
                   ...typeStyle(TYPE.display, ts),
                   color: "var(--ink)",
                   textWrap: "pretty",
+                  visibility: titleFlying ? "hidden" : "visible",
                 }}
               >
                 {lines.map((line, i) => (

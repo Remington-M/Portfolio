@@ -93,7 +93,31 @@ export type StageState = {
    */
   rebaseDeck: (laps: number) => void;
   registerRebase: (fn: ((laps: number) => void) | null) => void;
+
+  /**
+   * Where the project title is sitting, on whichever page is showing it.
+   *
+   * The title is a shared element: the same words are a ledger row on the home
+   * page and a headline on the project page, and they should travel between
+   * the two rather than one disappearing and the other appearing. That needs
+   * both boxes, and they live in different components on different routes.
+   *
+   * Each page registers its own. Neither computes the other's, and neither
+   * knows a transition is happening — they only say where their title is, and
+   * the layer that owns the moving copy does the rest.
+   */
+  titleAnchors: MutableRefObject<Record<TitleSlot, HTMLElement | null>>;
+  registerTitleAnchor: (slot: TitleSlot, el: HTMLElement | null) => void;
+  /**
+   * Set while the moving copy is in flight, so both pages can hide their own
+   * title and leave exactly one on screen.
+   */
+  titleFlying: boolean;
+  setTitleFlying: (v: boolean) => void;
 };
+
+/** The two places a project title is ever set. */
+export type TitleSlot = "ledger" | "headline";
 
 const StageContext = createContext<StageState | null>(null);
 
@@ -168,6 +192,18 @@ export function StageProvider({ children }: { children: ReactNode }) {
     rebase.current?.(laps);
   }, []);
 
+  const titleAnchors = useRef<Record<TitleSlot, HTMLElement | null>>({
+    ledger: null,
+    headline: null,
+  });
+  const registerTitleAnchor = useCallback(
+    (slot: TitleSlot, el: HTMLElement | null) => {
+      titleAnchors.current[slot] = el;
+    },
+    [],
+  );
+  const [titleFlying, setTitleFlying] = useState(false);
+
   // Keep the selected project in sync with the URL, so a deep link or a back
   // button lands with the right card as the shared element.
   useEffect(() => {
@@ -220,6 +256,10 @@ export function StageProvider({ children }: { children: ReactNode }) {
       commitDeck,
       rebaseDeck,
       registerRebase,
+      titleAnchors,
+      registerTitleAnchor,
+      titleFlying,
+      setTitleFlying,
     }),
     [
       values,
@@ -231,6 +271,8 @@ export function StageProvider({ children }: { children: ReactNode }) {
       commitDeck,
       rebaseDeck,
       registerRebase,
+      registerTitleAnchor,
+      titleFlying,
     ],
   );
 

@@ -229,14 +229,20 @@ export const projects: Project[] = [
   {
     slug: "google-pixel",
     title: "Google Pixel & Android",
-    displayTitle: ["Google Pixel", "& Android"],
     /**
      * One title and one date string, used by the ledger, the kicker, the YEAR
-     * field and the page <title>. The ledger used to say "Google Pixel, 2018"
-     * while the case page said "Google Pixel & Android, 2016–2020".
+     * field and the page <title>.
+     *
+     * No `displayTitle`: the authored break set it as two lines, which reads
+     * badly in the ledger and gave the row twice the height of every other one.
+     * A single line at both ends also means the shared title has no line breaks
+     * to reconcile as it travels.
+     *
+     * The date is the year it started rather than the span. `2016–2020` is
+     * accurate and is a lot of characters to hang off the end of a ledger row.
      */
-    year: "2016\u20132020",
-    yearLong: "2016\u20132020",
+    year: "2016",
+    yearLong: "2016",
     overview:
       "I had the privilege to work on the Pixel\u00a01\u20135. Getting to build the foundation for Google\u2019s phone with a small design team was a highlight of my career.\n\nI was responsible for core system transitions, Google Assistant & Search integrations, branded moments, core infrastructure, physics based motion and much more!",
     collaborators: "Name Surname, Name Surname, Name Surname",
