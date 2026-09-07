@@ -102,8 +102,12 @@ export default function Home() {
    */
   const [idle, setIdle] = useState(true);
   const idling = useRef(true);
-  /** How many cards the idle deal has turned, so a scroll knows what to undo. */
-  const dealt = useRef(0);
+  /**
+   * Set when the deal has ended but the deck has not yet been put back on the
+   * first project — it waits for the intro to be under way, so the turn is
+   * still running when the stack arrives.
+   */
+  const owed = useRef(false);
 
   /**
    * Put the deck back on the first project, going the short way round.
@@ -138,20 +142,50 @@ export default function Home() {
     pi.set(Math.min(1, top / cfg.intro));
 
     /**
-     * The first scroll ends the deal and takes the deck back to the first
-     * project, so the stack you scroll down to is the one the ledger starts
-     * on. Only when the timer actually moved it — coming back from a project
-     * page also arrives here, with a deck that is deliberately where it was
-     * left.
+     * Back at the very top: the landing screen again, so the deck deals again.
+     *
+     * Whatever card browsing left at the front is where the deal picks up —
+     * at the top there is no ledger row lit and no shot showing, so the deck
+     * has no position anyone is relying on, and scrolling back down puts it
+     * on the first project the same way it did the first time.
+     */
+    if (!idling.current && top <= 0) {
+      idling.current = true;
+      owed.current = false;
+      setIdle(true);
+    }
+
+    /**
+     * Leaving the top ends the deal, and owes the deck a turn back to the
+     * first project — so the stack you scroll down to is the one the ledger
+     * starts on.
      */
     if (idling.current && top > 0) {
       idling.current = false;
       setIdle(false);
-      if (dealt.current > 0) {
-        dealt.current = 0;
-        dealBackToFirst();
-        return;
-      }
+      owed.current = true;
+    }
+
+    /**
+     * While a turn is owed, this handler does nothing else.
+     *
+     * Everything below picks a card by comparing the scroll position with the
+     * deck's — and while the deal has been running those two disagree by
+     * however many cards the timer turned, which the scroller knows nothing
+     * about. Left to run it read that gap as travel: the per-gesture limit
+     * tripped, and the pin that enforces it wrote the scroller to the card the
+     * deck stopped at, throwing the page from the top of the intro to deep
+     * inside the deck. There is nothing here worth stepping anyway — the whole
+     * intro maps to the first card.
+     *
+     * Paying it waits for the intro to be under way rather than firing on the
+     * first pixel, so the shuffle is still turning as the stack rises.
+     */
+    if (owed.current) {
+      if (top < cfg.intro * HOME_IDLE.settleAt) return;
+      owed.current = false;
+      dealBackToFirst();
+      return;
     }
 
     /**
@@ -286,8 +320,10 @@ export default function Home() {
       pTarget.set(Math.round(remembered));
       // Arrived back at the deck rather than at the landing screen: there is
       // no hero to deal under, and the remembered card is the whole point.
+      // Scrolling all the way back to the top starts it dealing again.
       idling.current = false;
       setIdle(false);
+      owed.current = false;
     }
     el.scrollTop = remembered === null ? 0 : deckTop(remembered);
     onScroll();
@@ -324,7 +360,6 @@ export default function Home() {
       } else {
         pTarget.set(next);
       }
-      dealt.current += 1;
     }, HOME_IDLE.every);
     return () => clearInterval(id);
   }, [idle, reduced, n, pTarget, rebaseDeck, deckDriven]);

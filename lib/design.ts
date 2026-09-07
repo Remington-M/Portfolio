@@ -379,6 +379,18 @@ export const MOBILE_REF = { w: 390, h: 844 } as const;
 export const HOME_IDLE = {
   /** Milliseconds a card rests at the front before the next one is dealt. */
   every: 3000,
+  /**
+   * How far down the intro the deck commits back to the first project, as a
+   * fraction of it.
+   *
+   * Not on the first pixel of scroll. Started there, the turn back was over
+   * before the stack had finished rising — the one moment it is worth
+   * watching, spent on a screen that is still mostly hero. Held until the
+   * intro is better than half done, the shuffle is still running as the deck
+   * arrives, so scrolling down to the stack lands on cards in motion rather
+   * than on a deck that has already settled.
+   */
+  settleAt: 0.55,
 } as const;
 
 /**
