@@ -62,10 +62,10 @@ const PLACEHOLDER_COLLAB = "Name Surname, Name Surname";
  * one into the other. So a shot's `src` is also the name of the export it came
  * from, and re-cutting a clip means dropping the new export in and re-running.
  *
- * Two paths below deliberately reach into another project's folder. The
- * gesture work and the Assistant invocation are their own projects AND shots
- * in the Pixel overview, and they are the same recording either way; pointing
- * at the one file says so, and saves shipping it twice.
+ * One path below deliberately reaches into another project's folder. The
+ * gesture work is its own project AND a shot in the Pixel overview, and it is
+ * the same recording either way; pointing at the one file says so, and saves
+ * shipping it twice.
  */
 export const projects: Project[] = [
   {
@@ -189,12 +189,12 @@ export const projects: Project[] = [
     ],
   },
   {
-    slug: "airbnb-host-experience",
-    title: "Airbnb Host Experience",
+    slug: "airbnb-reservations",
+    title: "Airbnb Reservations",
     year: "2025",
     overview: PLACEHOLDER_OVERVIEW,
     collaborators: PLACEHOLDER_COLLAB,
-    src: "/media/airbnb-host-experience/reservation-detail.mp4",
+    src: "/media/airbnb-reservations/reservation-detail.mp4",
     /**
      * Reservation details on both surfaces, then the avatar work underneath
      * them. The last three are component renders rather than screen captures,
@@ -205,35 +205,35 @@ export const projects: Project[] = [
         n: "02",
         title: "Reservation Detail",
         kind: "portrait",
-        src: "/media/airbnb-host-experience/reservation-detail.mp4",
+        src: "/media/airbnb-reservations/reservation-detail.mp4",
         aspect: 0.4609,
       },
       {
         n: "03",
         title: "Reservation Detail Desktop",
         kind: "desktop",
-        src: "/media/airbnb-host-experience/reservation-detail-desktop.mp4",
+        src: "/media/airbnb-reservations/reservation-detail-desktop.mp4",
         aspect: 1.4063,
       },
       {
         n: "04",
         title: "Guest Avatars",
         kind: "landscape",
-        src: "/media/airbnb-host-experience/guest-avatars.mp4",
+        src: "/media/airbnb-reservations/guest-avatars.mp4",
         aspect: 1.88,
       },
       {
         n: "05",
         title: "Multi-Supply Avatars",
         kind: "landscape",
-        src: "/media/airbnb-host-experience/multi-supply-avatars.mp4",
+        src: "/media/airbnb-reservations/multi-supply-avatars.mp4",
         aspect: 1.88,
       },
       {
         n: "06",
         title: "Avatar Pile Studies",
         kind: "square",
-        src: "/media/airbnb-host-experience/avatar-pile-studies.mp4",
+        src: "/media/airbnb-reservations/avatar-pile-studies.mp4",
         aspect: 0.752,
       },
     ],
@@ -383,47 +383,19 @@ export const projects: Project[] = [
     ],
   },
   {
-    slug: "the-new-google-assistant",
-    title: "The New Google Assistant",
-    year: "2020",
-    overview: PLACEHOLDER_OVERVIEW,
-    collaborators: PLACEHOLDER_COLLAB,
-    src: "/media/the-new-google-assistant/assistant-invocation.mp4",
-    shots: [
-      {
-        n: "02",
-        title: "Assistant Invocation",
-        kind: "portrait",
-        src: "/media/the-new-google-assistant/assistant-invocation.mp4",
-        aspect: 0.474,
-      },
-      {
-        n: "03",
-        title: "Assistant Gesture",
-        kind: "portrait",
-        src: "/media/gesture-navigation/assistant-gesture.mp4",
-        aspect: 0.474,
-      },
-    ],
-  },
-  {
     slug: "google-pixel",
-    title: "Google Pixel & Android",
     /**
-     * The headline sets this on two lines; the ledger sets `title` on one.
-     *
-     * They are allowed to differ. A break that suits a 56px headline in a
-     * 470px column is not the break that suits a 28px row in a list, and
-     * forcing them to agree made the ledger row twice the height of every
-     * other one.
+     * Two words, and no `displayTitle`. It carried the break for "Google Pixel
+     * / & Android", and with the Android half gone there is nothing left to
+     * break — the headline and the ledger row set the same one line.
      */
-    displayTitle: ["Google Pixel", "& Android"],
+    title: "Google Pixel",
     /**
      * One date string, used by the ledger, the kicker, the YEAR field and the
-     * page <title>.
+     * page <title>. No `yearLong`: that exists for a project whose kicker wants
+     * a range where the ledger wants a year, and this is one year either way.
      */
-    year: "2016–2020",
-    yearLong: "2016–2020",
+    year: "2018",
     overview:
       "I had the privilege to work on the Pixel 1–5. Getting to build the foundation for Google’s phone with a small design team was a highlight of my career.\n\nI was responsible for core system transitions, Google Assistant & Search integrations, branded moments, core infrastructure, physics based motion and much more!",
     collaborators: "Name Surname, Name Surname, Name Surname",
@@ -432,8 +404,10 @@ export const projects: Project[] = [
      * The overview: system motion first, then the branded moments, then the
      * two side-by-side comparisons that end on a square.
      *
-     * The old list carried a Folder Animation shot that no export exists for,
-     * so it is gone rather than sitting there as a stripe fill.
+     * Two shots have no export and are gone rather than sitting there as a
+     * stripe fill: a Folder Animation that was never cut, and the Assistant
+     * work, which was briefly its own project and did not have the footage to
+     * carry one. Its invocation clip stayed and lives here now.
      */
     shots: [
       {
@@ -447,7 +421,7 @@ export const projects: Project[] = [
         n: "03",
         title: "Assistant Invocation",
         kind: "portrait",
-        src: "/media/the-new-google-assistant/assistant-invocation.mp4",
+        src: "/media/google-pixel/assistant-invocation.mp4",
         aspect: 0.474,
       },
       {
