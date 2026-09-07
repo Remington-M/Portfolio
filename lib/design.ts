@@ -369,6 +369,19 @@ export const DESKTOP_REF = { w: 1440, h: 900 } as const;
 export const MOBILE_REF = { w: 390, h: 844 } as const;
 
 /**
+ * The deck dealing itself while nobody has scrolled yet.
+ *
+ * The stack is the thing on the landing screen and it was holding still,
+ * which reads as a picture of a deck rather than a deck. It turns over on its
+ * own instead, using the same shuffle a scroll drives — there is only one card
+ * animation and this is it, on a timer instead of a wheel.
+ */
+export const HOME_IDLE = {
+  /** Milliseconds a card rests at the front before the next one is dealt. */
+  every: 3000,
+} as const;
+
+/**
  * How the hero sentence leaves as the deck assembles under it.
  *
  * It used to slide up and to the left while it faded, which put the sentence

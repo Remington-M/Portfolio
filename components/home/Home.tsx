@@ -17,6 +17,7 @@ import {
   DECK,
   DECK_MOTION,
   HERO_EXIT,
+  HOME_IDLE,
   TYPE,
   type as typeStyle,
 } from "@/lib/design";
@@ -92,6 +93,40 @@ export default function Home() {
     [cfg.intro, cfg.hold, cfg.step],
   );
 
+  /**
+   * Whether the deck is still dealing itself on the landing screen.
+   *
+   * A ref as well as state: `onScroll` runs on every scroll event and has to
+   * read this without being rebuilt, while the interval below needs a
+   * dependency it can be torn down by.
+   */
+  const [idle, setIdle] = useState(true);
+  const idling = useRef(true);
+  /** How many cards the idle deal has turned, so a scroll knows what to undo. */
+  const dealt = useRef(0);
+
+  /**
+   * Put the deck back on the first project, going the short way round.
+   *
+   * The scroller is still at the top when this runs, and at the top `raw` is
+   * 0 — the scroll position says "first card" no matter how many the timer has
+   * dealt. So this has to land on exactly 0, or `onScroll` will spend the next
+   * few gestures walking it back there two cards at a time.
+   *
+   * Going forwards is a rebase rather than a bigger target. `pTarget` has to
+   * end at 0 to agree with the scroller, so the distance is taken out of `p`
+   * instead: a lap off the animation is invisible — a position and that
+   * position plus a lap paint identically — and leaves the spring travelling
+   * up to 0 from below, which is the deck turning the way it has been turning
+   * rather than rewinding through the cards it just dealt.
+   */
+  const dealBackToFirst = useCallback(() => {
+    const k = (((pTarget.get() % n) + n) % n);
+    if (k === 0) return;
+    if (k > DECK_MOTION.reverseMax) rebaseDeck(1);
+    pTarget.set(0);
+  }, [pTarget, n, rebaseDeck]);
+
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -101,6 +136,23 @@ export default function Home() {
 
     const top = el.scrollTop;
     pi.set(Math.min(1, top / cfg.intro));
+
+    /**
+     * The first scroll ends the deal and takes the deck back to the first
+     * project, so the stack you scroll down to is the one the ledger starts
+     * on. Only when the timer actually moved it — coming back from a project
+     * page also arrives here, with a deck that is deliberately where it was
+     * left.
+     */
+    if (idling.current && top > 0) {
+      idling.current = false;
+      setIdle(false);
+      if (dealt.current > 0) {
+        dealt.current = 0;
+        dealBackToFirst();
+        return;
+      }
+    }
 
     /**
      * A gesture is a run of scroll events with no real gap in it — one flick
@@ -180,6 +232,7 @@ export default function Home() {
     deckDriven,
     rebaseDeck,
     deckTop,
+    dealBackToFirst,
   ]);
 
   /**
@@ -229,12 +282,52 @@ export default function Home() {
     const el = scrollRef.current;
     if (!el || stage.h === 0) return;
     const remembered = restoreDeck();
-    if (remembered !== null) pTarget.set(Math.round(remembered));
+    if (remembered !== null) {
+      pTarget.set(Math.round(remembered));
+      // Arrived back at the deck rather than at the landing screen: there is
+      // no hero to deal under, and the remembered card is the whole point.
+      idling.current = false;
+      setIdle(false);
+    }
     el.scrollTop = remembered === null ? 0 : deckTop(remembered);
     onScroll();
     // Only on mount and when the stage is first measured.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage.h === 0]);
+
+  /**
+   * Deal a card every few seconds while the landing screen is still up.
+   *
+   * Advancing `pTarget` is the whole implementation: the media layer already
+   * springs the deck to whatever that says and plays the shuffle to get there,
+   * so this is the scroll wheel's own path with a timer on the end of it
+   * rather than a second animation that would have to be kept in step.
+   *
+   * The position is kept inside one lap as it goes. Left to run, `pTarget`
+   * would climb for as long as the page is open — it paints identically,
+   * since depth is measured around a ring, but it would hand the first scroll
+   * a number the scroller has no room for. Taking the lap off both the target
+   * and the animation at once is invisible.
+   */
+  useEffect(() => {
+    if (!idle || reduced) return;
+    const id = setInterval(() => {
+      // Nothing dealt into a hidden tab: the timer would bank a dozen turns
+      // and pay them out in one riffle the moment it came back.
+      if (document.visibilityState !== "visible") return;
+      // A hand on the deck owns it.
+      if (deckDriven.current) return;
+      const next = pTarget.get() + 1;
+      if (next >= n) {
+        rebaseDeck(1);
+        pTarget.set(next - n);
+      } else {
+        pTarget.set(next);
+      }
+      dealt.current += 1;
+    }, HOME_IDLE.every);
+    return () => clearInterval(id);
+  }, [idle, reduced, n, pTarget, rebaseDeck, deckDriven]);
 
   const jumpTo = useCallback(
     (i: number) => {
