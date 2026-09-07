@@ -881,11 +881,20 @@ export type ShotKind = "portrait" | "square" | "desktop" | "landscape";
  * desktop recording in a 44px-rounded box reads as a phone showing a website.
  * `ir` equals `r` throughout because `pad` is 0 — there is no bezel to have an
  * inner corner inside of.
+ *
+ * The heights are meant to agree. Anything held to a height is held to
+ * `CASE.roomH`, which is the height the stage has to give — so a square and a
+ * portrait recording are the same height on the page and differ only in how
+ * much width their own proportions ask for. The square box was 520 against
+ * portrait's 652, and since the fit only ever shrinks, nothing downstream ever
+ * took that back: a square clip simply sat at 80% of the height everything
+ * around it was using, with the difference showing as empty room above and
+ * below it.
  */
 export function frameBox(kind: ShotKind, aspect?: number) {
   const box =
     kind === "square"
-      ? { w: 520, h: 520, pad: 0, r: 22, ir: 22, bar: false }
+      ? { w: 652, h: 652, pad: 0, r: 22, ir: 22, bar: false }
       : kind === "desktop"
         ? { w: 1020, h: 638, pad: 0, r: 18, ir: 18, bar: false }
         : kind === "landscape"
