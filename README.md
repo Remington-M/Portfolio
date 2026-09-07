@@ -97,17 +97,47 @@ on wide monitors without the ledger drifting away from the deck.
   scroll mapping survive; the jitter, shuffle arc, `rotateY` and parallax drift
   do not.
 
+## Media
+
+Raw exports go in `media-source/<slug>/<name>.mp4`, which is gitignored — they
+run to hundreds of megabytes and nothing serves them. `npm run media` encodes
+each one to `public/media/<slug>/<name>.mp4`, and the name carries across
+untouched, so a shot's `src` is also the name of the export it came from.
+
+```
+npm run media                 # anything whose source is newer than its output
+npm run media -- --force      # all of it again
+npm run media -- google-pixel # one project
+```
+
+The settings live at the top of `scripts/encode-media.mjs` with the reasoning:
+H.264 High / yuv420p at CRF 21 capped to 7 Mb/s, no audio, `+faststart`, and
+the longest side held to 1920 without upscaling. They were read back out of the
+clips that shipped first (`strings` on an MP4 prints the x264 options it was
+built with) rather than picked fresh, so everything on the site matches.
+
+A source whose name starts with `_` is held back and never encoded, which is
+where alternate takes live.
+
+Two things to know when adding a clip:
+
+- **Set `aspect` from the encoded file, not the export.** The viewer morphs to
+  the clip's shape, and an aspect that disagrees with the footage letterboxes or
+  crops it. The encoder prints the number to paste.
+- **`kind` picks the frame's size and corner radius, not its shape** — phone,
+  square, browser window, or 16:9. The shape comes from `aspect`.
+
+H.264 MP4 is the baseline; add a VP9 `srcWebm` alongside it for smaller files
+where you can.
+
 ## Still placeholder
 
-- **Media.** One real clip (`public/media/airbnb-setup.mp4`). Everything else is
-  a diagonal-stripe fill. Delete `stripeFill` and the `hue` fields when real
-  clips land. H.264 MP4 is the baseline; add a VP9 `srcWebm` alongside it for
-  smaller files where you can.
 - **Copy.** Five of six projects have placeholder overview text and collaborator
   names. Google Pixel has real copy.
-- **Shots.** Every project except Google Pixel has five blank numbered shots.
 - **About page.** Does not exist yet. It's where the role line belongs, which is
   why no project page carries a role field.
-- **Pixel morphing viewport.** The frame geometry supports portrait, square,
-  desktop and landscape shapes (`frameBox`), and Google Pixel's nine shots are
-  in the data. The morph is wired but hasn't been tuned against the design.
+- **Device frames in the Google footage.** The design draws no bezel — the
+  viewer is a rounded rectangle holding the picture and nothing else. Six of the
+  Pixel and gesture clips were exported with a phone body rendered onto white,
+  so those play a drawn phone inside the frame. Re-exporting the screen alone is
+  the fix; cropping them here would guess at the screen rect.
