@@ -13,7 +13,13 @@ import Header from "@/components/Header";
 import Ledger from "./Ledger";
 import Ticks from "@/components/Ticks";
 import { projects } from "@/lib/projects";
-import { DECK, DECK_MOTION, TYPE, type as typeStyle } from "@/lib/design";
+import {
+  DECK,
+  DECK_MOTION,
+  HERO_EXIT,
+  TYPE,
+  type as typeStyle,
+} from "@/lib/design";
 import { clamp01 } from "@/lib/spring";
 import { frontIndex, stageY } from "@/lib/geometry";
 
@@ -343,11 +349,18 @@ export default function Home() {
     return () => window.removeEventListener("keydown", onKey);
   }, [jumpTo, deckTop, pi, pTarget, reduced, n]);
 
-  // Hero drifts away as the deck arrives. Driven straight off the intro
+  // Hero settles back as the deck arrives. Driven straight off the intro
   // progress, so no re-render happens while scrolling.
-  const heroOpacity = useTransform(pi, (v) => Math.max(0, 1 - v * 1.9));
-  const heroX = useTransform(pi, (v) => (mobile || reduced ? 0 : -v * 150));
-  const heroY = useTransform(pi, (v) => (reduced ? 0 : -v * (mobile ? 34 : 44)));
+  const heroOpacity = useTransform(pi, (v) =>
+    Math.max(0, 1 - v * HERO_EXIT.fade),
+  );
+  /**
+   * On the fade's clock, not the intro's, so the two finish together and read
+   * as one gesture rather than as a scale that carries on invisibly.
+   */
+  const heroScale = useTransform(pi, (v) =>
+    reduced ? 1 : 1 - (1 - HERO_EXIT.scale) * clamp01(v * HERO_EXIT.fade),
+  );
   const chromeOpacity = useTransform(pi, (v) => clamp01((v - 0.45) * 2.2));
 
   const s = stage.s;
@@ -398,8 +411,7 @@ export default function Home() {
                 display: "flex",
                 justifyContent: "center",
                 opacity: heroOpacity,
-                x: heroX,
-                y: heroY,
+                scale: heroScale,
                 pointerEvents: "none",
               }}
             >

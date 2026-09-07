@@ -368,6 +368,33 @@ export const TIDY = {
 export const DESKTOP_REF = { w: 1440, h: 900 } as const;
 export const MOBILE_REF = { w: 390, h: 844 } as const;
 
+/**
+ * How the hero sentence leaves as the deck assembles under it.
+ *
+ * It used to slide up and to the left while it faded, which put the sentence
+ * and the stack in motion in two different directions at the same moment —
+ * and travelling to a corner reads as the text being swept out of the way,
+ * as though it were in the way. It settles back instead: the same fade, and
+ * a small scale about its own centre, so it recedes on the spot and lets the
+ * phone rising underneath be the only thing that moves.
+ */
+export const HERO_EXIT = {
+  /**
+   * How fast it fades against intro progress. 1.9 means gone by the time the
+   * deck is half assembled, which is what keeps it clear of the stack.
+   */
+  fade: 1.9,
+  /**
+   * Where the scale finishes, reached on the fade's clock rather than the
+   * intro's — a scale still running after the text is invisible is a scale
+   * nobody sees, and the two read as one gesture only if they end together.
+   *
+   * Small on purpose. Past a few percent this stops reading as type settling
+   * back and starts reading as a zoom.
+   */
+  scale: 0.94,
+} as const;
+
 export const DECK = {
   desktop: {
     /** Scroll distance for the hero-to-deck intro, and per project after that. */
