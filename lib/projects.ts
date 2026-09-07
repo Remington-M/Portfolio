@@ -20,6 +20,22 @@ export type Shot = {
    * is the difference between a fit and a hairline letterbox.
    */
   aspect?: number;
+  /**
+   * Arrive at this shot by cutting to it, with no transition at all.
+   *
+   * The push exists to announce a change the geometry did not: two clips of
+   * the same proportions get the full slide precisely because the viewer has
+   * nothing to say about them. That is the right default, and exactly wrong
+   * for a pair that is the same picture a step further on — a screen with the
+   * photos filled in after a screen with them empty. Sliding a viewport-width
+   * of travel under a change of that size announces far more than happened.
+   *
+   * A cut swaps the clip where it stands and lets the caption underneath carry
+   * the step on its own. The flag belongs to the LATER shot of the pair, so it
+   * reads as "this one follows straight on from the last" and holds in both
+   * directions — stepping back up is the same non-event as stepping down.
+   */
+  cut?: boolean;
   src?: string;
   srcWebm?: string;
   poster?: string;
@@ -150,6 +166,9 @@ export const projects: Project[] = [
         kind: "landscape",
         src: "/media/airbnb-setup/menu-image-fill.mp4",
         aspect: 1.7778,
+        // The same screen as 10 with the photos filled in. Nothing moves but
+        // the contents of one panel, so nothing should move to say so.
+        cut: true,
       },
       {
         n: "12",

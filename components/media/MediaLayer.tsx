@@ -866,6 +866,30 @@ export default function MediaLayer() {
   }, [selectedIndex]);
 
   /**
+   * Which steps are cuts, on the same index base as `shotShapes`.
+   *
+   * A shot's flag owns the boundary above it, so `cuts[k]` is read for the
+   * step between k-1 and k whichever way it is walked. Index 0 is the intro
+   * and has nothing above it to cut from.
+   */
+  const shotCuts = useMemo(() => {
+    if (selectedIndex < 0) return [];
+    return [false, ...projects[selectedIndex].shots.map((s) => !!s.cut)];
+  }, [selectedIndex]);
+
+  /**
+   * Set for the one frame after a cut, to stop the viewer springing to a shape
+   * it is allowed to arrive at instantly.
+   *
+   * Nothing to do where the two shots are the same shape — which is the case a
+   * cut is for, and the target simply does not move. It matters for a cut
+   * between different shapes: "no transition" has to mean the frame either,
+   * otherwise the one thing left animating is the thing the flag was set to
+   * stop.
+   */
+  const cutSnap = useRef(false);
+
+  /**
    * Everything that happens when the shot changes.
    *
    * One measurement drives both halves. `assist` is how little the geometry
@@ -922,9 +946,23 @@ export default function MediaLayer() {
     const turned = Math.abs(Math.log(to.w / to.h) - Math.log(from.w / from.h));
     const assist = clamp01(1 - turned / tuning.pushFalloff);
 
-    const span = tuning.pushOn
-      ? tuning.pushMin + (tuning.pushMax - tuning.pushMin) * assist
-      : 0;
+    /**
+     * An authored cut beats the measurement.
+     *
+     * `assist` reads the geometry and answers 1 for two clips of the same
+     * shape — the strongest push there is, because the frame said nothing. For
+     * a pair that is one screen and then the same screen a step further on,
+     * that reasoning is right about the geometry and wrong about the content,
+     * and only the person who cut the clips can tell the difference.
+     */
+    const cut = shotCuts[Math.max(prev, shot)] === true;
+    cutSnap.current = cut;
+
+    const span = cut
+      ? 0
+      : tuning.pushOn
+        ? tuning.pushMin + (tuning.pushMax - tuning.pushMin) * assist
+        : 0;
     /**
      * Measured against the NARROWER of the two frames.
      *
@@ -1036,6 +1074,10 @@ export default function MediaLayer() {
 
   useAnimationFrame((time, deltaMs) => {
     if (stage.w === 0 || stage.h === 0) return;
+    // Read once and clear, so a cut snaps for exactly one frame no matter how
+    // many cards the loop below walks.
+    const cutting = cutSnap.current;
+    cutSnap.current = false;
     const dt = Math.min(deltaMs, 64) / 1000;
     const now = time / 1000;
     const n = projects.length;
@@ -1451,7 +1493,10 @@ export default function MediaLayer() {
       const arriving =
         settling.current && Math.round(cpv) === arrivalShot.current;
       const animate =
-        !prime && !reduced && (settling.current || mode === "home" || morphing);
+        !prime &&
+        !reduced &&
+        !(cutting && i === sel) &&
+        (settling.current || mode === "home" || morphing);
       /**
        * The back of the stack — the card in transit plus the slot it lands in
        * — runs a firmer, much less bouncy spring than the front. It is the one
