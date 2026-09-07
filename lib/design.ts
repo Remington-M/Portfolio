@@ -385,7 +385,24 @@ export const DECK = {
      * both sides rather than just one.
      */
     cx: [720 / 1440, 1046 / 1440] as const,
-    cy: [770 / 900, 495 / 900] as const,
+    cy: [1075 / 900, 495 / 900] as const,
+    /**
+     * How much bigger the stack is before the deck assembles, and 1 once it
+     * has. Same shape as `cx`/`cy`: the landing state and the deck state, read
+     * off the intro.
+     *
+     * A scale rather than a bigger card, because the two states want different
+     * sizes and only one of them has room to choose. The deck state has the
+     * ledger beside it and the full height of the stage to sit inside — at
+     * 700 the card already leaves about 57px top and bottom, so growing the
+     * card itself runs out of stage almost immediately. The landing state has
+     * no such limit: the phone is meant to be too big for the frame and to
+     * show only its top, so it is scaled up and its centre pushed below the
+     * bottom edge. Shrinking back to 1 as the deck arrives is then the same
+     * gesture as the rise — the phone recedes into the stack rather than
+     * cutting to a different size.
+     */
+    heroScale: [1.62, 1] as const,
     /** Depth-stack offsets per card behind the front one. */
     dx: 9,
     dy: -15,

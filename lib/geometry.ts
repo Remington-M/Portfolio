@@ -303,6 +303,26 @@ export function deckCard(
     rotate: d < 0.02 ? 0 : jr * (0.3 + 0.12 * d),
   });
 
+  /**
+   * The whole stack, larger before the deck assembles.
+   *
+   * Applied to every card so the stack grows as one object rather than the
+   * front card growing out of it, and multiplied into `scale` rather than into
+   * the size so nothing downstream has to know: the throw distance, the depth
+   * offsets and the arc all stay authored against one card size, and the
+   * transform grows the result about the card's own centre.
+   *
+   * Not disabled under reduced motion, unlike the jitter and the arc. This is
+   * scroll-linked, exactly like the `cx`/`cy` it moves with — it is the size
+   * the landing state IS, not an animation played on the way to it. Dropping
+   * it while the lowered origin stayed would leave a small stack pushed down
+   * off the bottom of the page, which is not a calmer version of the design,
+   * just a broken one.
+   */
+  const heroGrow = stage.mobile
+    ? 1
+    : lerp(DECK.desktop.heroScale[0], DECK.desktop.heroScale[1], intro);
+
   let x: number, y: number, scale: number, rotate: number;
   let rotateY = 0;
   let scrim: number, z: number;
@@ -369,7 +389,7 @@ export function deckCard(
     innerRadius: size.radius,
     rotate,
     rotateY,
-    scale,
+    scale: scale * heroGrow,
     // Deck cards are never transparent; depth is the wash above.
     opacity: 1,
     scrim: clamp01(scrim),

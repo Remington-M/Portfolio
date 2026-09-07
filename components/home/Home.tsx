@@ -393,7 +393,7 @@ export default function Home() {
                 position: "absolute",
                 left: mobile ? 24 : 0,
                 right: mobile ? 24 : 0,
-                top: stageY(stage, mobile ? 132 : 176),
+                top: stageY(stage, mobile ? 132 : 256),
                 zIndex: 52,
                 display: "flex",
                 justifyContent: "center",
