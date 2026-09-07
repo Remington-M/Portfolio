@@ -770,6 +770,27 @@ export default function MediaLayer() {
   }, [nearIndex, selectedIndex]);
 
   /**
+   * The one card whose clip is allowed to run. Exactly one, always.
+   *
+   * `liveVideo` decides which cards get a real <video> — the front card and
+   * its two neighbours, so stepping the deck is instant — and that is a
+   * different question from which one is playing. Three elements were mounted
+   * with `autoPlay` and only the front one was ever asked to stop, so the
+   * neighbours ran for ever behind it.
+   *
+   * The fallback to `nearIndex` is what makes this safe to act on. `mode`
+   * comes off the pathname during render and `selectedIndex` arrives a render
+   * later through a MotionValue event, so between a click and the selection
+   * landing there is a render where the card being carried into the viewer is
+   * neither front nor selected. Reading that as "nothing is active" and
+   * stopping it would rewind the clip at the exact moment the whole layer
+   * exists to keep running. During that gap the front card IS the one being
+   * carried, so naming it here costs nothing and closes the window.
+   */
+  const activeCard =
+    mode === "case" && selectedIndex >= 0 ? selectedIndex : nearIndex;
+
+  /**
    * The shot the current route change arrived on, or -1 before the first frame
    * of it has been seen.
    *
@@ -1781,7 +1802,7 @@ export default function MediaLayer() {
                 armed={!isSelected || armed}
                 wantsVideo={wantsVideo}
                 activeShot={isSelected ? shotIndex : 0}
-                playing={isSelected || isFront}
+                playing={i === activeCard}
                 showBar={false}
               />
               {isFront ? (
@@ -1956,8 +1977,19 @@ function ShotClip({
     const el = ref.current;
     if (!el) return;
     el.muted = true;
+    /**
+     * Not the active card: every one of its shots is stopped and wound back,
+     * whatever role it happens to hold. `role === "out"` is normally protected
+     * from a rewind because a departing clip is still on screen — but only the
+     * active card has anything on screen at all, so there is nothing here to
+     * protect and leaving one running is the bug.
+     */
+    if (!playing) {
+      el.pause();
+      el.currentTime = 0;
+      return;
+    }
     if (role === "in") {
-      if (!playing) return;
       if (!armed) {
         // Arrived but not started: parked on its first frame while it crosses.
         el.pause();
@@ -2135,7 +2167,20 @@ function CardFace({
     // iOS refuses to autoplay unless the element is muted, and without
     // playsInline it takes the video fullscreen instead of playing in place.
     el.muted = true;
-    if (!playing) return;
+    /**
+     * Not the active card: stopped and wound back, not merely left alone.
+     *
+     * This returned early, which combined with `autoPlay` on the element meant
+     * a card that was never asked to play started anyway and was never asked
+     * to stop. Winding back rather than pausing is what makes every card begin
+     * at its own beginning — a deck you scrub through should not show you the
+     * middle of a clip you have not watched.
+     */
+    if (!playing) {
+      el.pause();
+      el.currentTime = 0;
+      return;
+    }
     /**
      * The same three states every other clip has: arriving, leaving, gone.
      *
@@ -2241,7 +2286,14 @@ function CardFace({
             ref={videoRef}
             poster={asset(project.poster)}
             draggable={false}
-            autoPlay
+            /**
+             * No `autoPlay`. The effect below is the only thing that decides
+             * whether this clip runs, and `autoPlay` is a second opinion that
+             * arrives first — it starts on mount, before an effect can say
+             * otherwise, so every neighbour painted a frame or two of playback
+             * on its way to being stopped. The shots' clips have never carried
+             * it and start the same way: by being asked to.
+             */
             muted
             loop
             playsInline
