@@ -229,21 +229,25 @@ export function deckZ(i: number, count: number, p: number): number {
  */
 function fanAngle(depth: number, deepest: number, spread: number): number {
   const at = (d: number) => {
-    if (deepest < 2 || d <= 0 || d >= deepest) return 0;
+    if (deepest < 1 || d <= 0) return 0;
     /**
-     * The cards between the two ends lie in an even arc from one edge of the
-     * fan to the other.
+     * Cards step outward from the front, alternating sides.
      *
-     * The angles used to alternate sides — first card left, second right,
-     * third further left — which is even and balanced when there is an even
-     * number of cards to place, and lopsided the moment there is not. At five
-     * projects it put two cards out to the left and one to the right, and the
-     * fan sat off to one side. Laid out in order instead, the arc is symmetric
-     * whatever the deck holds.
+     * The front card is square because it is the one being read, so it has to
+     * sit in the MIDDLE of the fan — and the only way to reach the middle from
+     * one end of a depth order is to alternate. Laid out in depth order left
+     * to right instead, the square card lands between the two innermost cards
+     * and halves their gaps: five cards came out at 14.7, 7.3, 7.3, 14.7
+     * degrees apart. Alternating, every gap is the same gap.
+     *
+     * The deepest card is fanned like the rest. Squaring it as well as the
+     * front one was what an earlier version did to stop a dealt card snapping
+     * as it landed, and it cost the fan a position — the shuffle that carries
+     * a card to the back now lands it on its fan angle instead.
      */
-    const fanned = deepest - 1;
-    if (fanned === 1) return 0;
-    return -spread + (2 * spread * (d - 1)) / (fanned - 1);
+    const pairs = Math.max(1, Math.ceil(deepest / 2));
+    const side = d % 2 === 1 ? -1 : 1;
+    return (side * Math.ceil(d / 2) * spread) / pairs;
   };
   const lo = Math.floor(depth);
   return lerp(at(lo), at(lo + 1), depth - lo);
@@ -351,6 +355,24 @@ export function deckCard(
   const lean = reduced ? 0 : cfg.lean * splay;
 
   /**
+   * How much of the stack's own scatter is showing: none on the landing
+   * screen, all of it once the deck has assembled.
+   *
+   * The fan and the scatter are two different accounts of how the stack is
+   * arranged, and running both at once gave neither. The fan turns every card
+   * about one pivot by an even step; the scatter steps each card up and to the
+   * right by its depth, leans it five degrees by turn, and jitters the result.
+   * Together the leans cancelled two cards onto the same angle, and the depth
+   * steps pushed the deeper half of the fan sideways — the gaps came out 38,
+   * 48, 69 and 68 pixels across an arc whose angles were exactly even.
+   *
+   * They cross-fade instead. Fanned, the cards share a pivot and nothing but
+   * the fan places them, which is what a hand of cards is. Assembled, the
+   * stack has its offsets and its lean back, exactly as before.
+   */
+  const scatter = intro;
+
+  /**
    * Resting position for a card `d` places back in the stack.
    *
    * The lean lives in here rather than being added at the one place a resting
@@ -360,10 +382,10 @@ export function deckCard(
    * card was counted as resting.
    */
   const rest = (d: number) => ({
-    x: d * cfg.dx * k + jx * 0.4 * Math.min(1, d),
-    y: d * cfg.dy * k + jy * 0.55 * Math.min(1, d),
+    x: (d * cfg.dx * k + jx * 0.4 * Math.min(1, d)) * scatter,
+    y: (d * cfg.dy * k + jy * 0.55 * Math.min(1, d)) * scatter,
     scale: 1 - d * cfg.dScale,
-    rotate: d < 0.02 ? 0 : jr * (0.3 + 0.12 * d) + lean,
+    rotate: d < 0.02 ? 0 : (jr * (0.3 + 0.12 * d) + lean) * scatter,
   });
 
   /**
@@ -386,6 +408,23 @@ export function deckCard(
     ? 1
     : lerp(DECK.desktop.heroScale[0], DECK.desktop.heroScale[1], intro);
 
+  /**
+   * Where the fan puts a card `d` places back: its angle, and the offset that
+   * comes of turning it about a pivot below the stack.
+   *
+   * Turning about a point that far below is what sets the cards side by side
+   * rather than merely leaning them — the further round a card turns the more
+   * it also carries sideways and lifts. Folds to nothing as the intro plays,
+   * so the fan, the shrink and the travel to the right are one scroll and
+   * scrubbing back up re-fans exactly.
+   */
+  const fanAt = (d: number) => {
+    const deg = reduced ? 0 : fanAngle(d, deepest, cfg.fan.spread) * (1 - intro);
+    const rad = (deg * Math.PI) / 180;
+    const pivot = cfg.fan.pivot * k;
+    return { deg, dx: pivot * Math.sin(rad), dy: pivot * (1 - Math.cos(rad)) };
+  };
+
   let x: number, y: number, scale: number, rotate: number;
   let rotateY = 0;
   let scrim: number, z: number;
@@ -398,10 +437,20 @@ export function deckCard(
     const ease = smoothstep(t);
     const arc = Math.sin(t * Math.PI);
     const deep = rest(deepest);
-    x = deep.x * ease + arc * size.width * cfg.arcXWidths * arcScale * dir;
-    y = deep.y * ease + arc * cfg.arcY * k;
+    /**
+     * The slot at the back is a fanned slot, so the arc has to land on it.
+     *
+     * This carried no fan at all, which forced the deepest card's fan angle to
+     * be zero — the only value that let a dealt card stop without a step. Every
+     * other value snapped: a card arrived square and then turned the moment it
+     * counted as resting rather than travelling. Folding the landing angle into
+     * the arc frees the back of the fan to be wherever the spread wants it.
+     */
+    const f = fanAt(deepest);
+    x = (deep.x + f.dx) * ease + arc * size.width * cfg.arcXWidths * arcScale * dir;
+    y = (deep.y + f.dy) * ease + arc * cfg.arcY * k;
     scale = 1 + (deep.scale - 1) * ease;
-    rotate = reduced ? 0 : deep.rotate * ease + arc * cfg.arcRot * dir;
+    rotate = reduced ? 0 : (deep.rotate + f.deg) * ease + arc * cfg.arcRot * dir;
     rotateY = reduced ? 0 : arc * cfg.arcRotY * dir;
     /**
      * Held fully opaque while the card is still passing in FRONT of the stack,
@@ -418,25 +467,10 @@ export function deckCard(
   } else {
     const pull = pullAt(depth);
     const g = rest(Math.max(0, depth - pull.depth));
-    /**
-     * The landing fan, folding shut as the deck assembles.
-     *
-     * Each card turns about a pivot below the stack by its fan angle, which is
-     * what puts the cards side by side rather than merely leaning: turning a
-     * card about a point that far below it carries it sideways, and the
-     * further round it turns the more it also lifts. Scaled by how much of the
-     * intro is left, so the fold, the shrink and the travel to the right are
-     * all the same scroll and scrubbing back up re-fans exactly.
-     *
-     * Only cards at rest fan. A card dealt to the back travels its arc to the
-     * plain resting slot and the deepest fan angle is zero, so it lands on the
-     * fan without a step.
-     */
-    const fan = reduced ? 0 : fanAngle(depth, deepest, cfg.fan.spread) * (1 - intro);
-    const fanRad = (fan * Math.PI) / 180;
-    const pivot = cfg.fan.pivot * k;
-    x = g.x + pivot * Math.sin(fanRad);
-    y = g.y + pivot * (1 - Math.cos(fanRad));
+    const f = fanAt(depth);
+    const fan = f.deg;
+    x = g.x + f.dx;
+    y = g.y + f.dy;
     scale = g.scale;
     /**
      * The front card is always square to the viewer.
