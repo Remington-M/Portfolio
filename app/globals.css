@@ -36,6 +36,14 @@
  * ------------------------------------------------------------------ */
 :root {
   --page: oklch(0.963 0.008 80);
+  /**
+   * What the depth wash on a deck card tends toward.
+   *
+   * The page, in light: a card further back hazes out toward the paper behind
+   * it, which is what distance looks like here. Dark mode cannot use the same
+   * answer — see the note where it is redefined.
+   */
+  --veil: var(--page);
   /* ---------------------------------------------------------------- *
    * The ink ramp.
    *
@@ -136,6 +144,17 @@
     /* Lighter than the page, so a card still reads as an object sitting on
        it rather than a hole cut out of it. */
     --device: oklch(0.25 0.006 60);
+    /**
+     * The depth wash tends toward a bare card, not toward the page.
+     *
+     * Washing toward the page is right in light and breaks the rule directly
+     * above it in dark: it takes a card at the back most of the way to the
+     * background it is sitting on, so the stack showed a black slab where a
+     * receding card should be — and none of the footage is black. Aiming at
+     * the colour of a bare card instead keeps a distant one an object: it
+     * loses contrast and brightness without ever going darker than a card.
+     */
+    --veil: var(--device);
     --shot-empty: oklch(0.3 0.006 60);
     --ghost: oklch(0.255 0.008 70);
     --return-card: oklch(0.275 0.008 70);
@@ -162,6 +181,7 @@
     --hairline: var(--rule);
     --frame-edge: rgba(42, 39, 36, 0.1);
     --device: #302d2a;
+    --veil: var(--page);
     --viewer: #ffffff;
     --shot-empty: #45413d;
     --ghost: #e8e2d6;
@@ -180,6 +200,7 @@
       --hairline: var(--rule);
       --frame-edge: rgba(236, 231, 221, 0.12);
       --device: #2b2825;
+      --veil: var(--device);
       --shot-empty: #37332f;
       --ghost: #2d2a26;
       --return-card: #322e2a;

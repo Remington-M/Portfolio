@@ -2446,7 +2446,7 @@ function CardFace({
         style={{
           position: "absolute",
           inset: 0,
-          background: "var(--page)",
+          background: "var(--veil)",
           opacity: scrim,
           pointerEvents: "none",
           zIndex: 3,
