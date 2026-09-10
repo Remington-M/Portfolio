@@ -289,10 +289,18 @@ export const SPRING = {
  */
 export function deckShadow(front: boolean, strength = 1): string {
   const k = strength < 0 ? 0 : strength > 1 ? 1 : strength;
+  /**
+   * Heavier than it was, and reaching further past the card's own edge.
+   *
+   * Nearly every clip is a white app screen, so a card overlapping another is
+   * white on white and the shadow is the only thing drawing the boundary. The
+   * spreads were pulled in far enough (-28 and -26 against blurs of 56 and 40)
+   * that the shadow barely cleared the card it belonged to.
+   */
   const cast = front
-    ? { y: 28, blur: 56, spread: -28, alpha: 0.45 }
-    : { y: 16, blur: 40, spread: -26, alpha: 0.38 };
-  const edge = front ? 0.1 : 0.08;
+    ? { y: 30, blur: 58, spread: -22, alpha: 0.55 }
+    : { y: 18, blur: 42, spread: -20, alpha: 0.48 };
+  const edge = front ? 0.12 : 0.1;
   return (
     `0 ${cast.y}px ${cast.blur}px ${cast.spread}px ${castColour(cast.alpha * k)}, ` +
     `inset 0 0 0 1px ${edgeColour(edge * k)}`
@@ -469,11 +477,23 @@ export const DECK = {
      * made the departing card vanish at the very moment it was supposed to be
      * seen sliding in behind the others.
      */
+    /**
+     * How many cards read as the solid front of the stack.
+     *
+     * Nothing to do with the wash any more — that ramps from the front card
+     * back. This is what a card leaving has to clear on its way round: past
+     * this depth a card is washed and sits behind the ones in front of it, so
+     * the sliver of it that protrudes cannot show a card passing over it.
+     */
     opaqueDepth: 2,
-    /** Wash added per depth step beyond the clear range. */
-    dScrim: 0.26,
-    /** Cap, so the back of the stack recedes without washing out completely. */
-    maxScrim: 0.55,
+    /**
+     * The wash on the card at the very back. Every card in front of it gets a
+     * share of this in proportion to how far back it sits.
+     *
+     * Raised from 0.55, and it now describes the deepest card rather than
+     * capping a per-step sum, so it is the actual darkest value on screen.
+     */
+    maxScrim: 0.72,
     /**
      * Where in its trip to the back the departing card starts to take the
      * wash. It stays clear while it is still passing in front of the stack.
@@ -555,8 +575,7 @@ export const DECK = {
     dy: -8,
     dScale: 0.026,
     opaqueDepth: 2,
-    dScrim: 0.26,
-    maxScrim: 0.55,
+    maxScrim: 0.72,
     fadeStart: 0.55,
     jitter: [13, 7, 4.2] as const,
     arcXWidths: 1.66,

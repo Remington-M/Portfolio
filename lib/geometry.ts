@@ -289,11 +289,20 @@ export function deckCard(
   };
 
   /**
-   * Opacity of a card resting `d` places back. Flat across the front of the
-   * stack, then falling away behind it.
+   * Opacity of the wash on a card resting `d` places back.
+   *
+   * A straight ramp from the front card to the last, rather than a fixed step
+   * per place: it used to be flat across the front three and then drop away
+   * in two jumps, which read as a couple of dark cards stuck behind a slab of
+   * identical ones rather than as a stack receding.
+   *
+   * Measured against the deepest card rather than counted outwards, so the
+   * back of the stack is always the darkest thing in it whatever the deck
+   * holds. Add a project and the ramp spreads to cover it; the last card is
+   * still the last card.
    */
   const restScrim = (d: number) =>
-    Math.min(cfg.maxScrim, Math.max(0, d - cfg.opaqueDepth) * cfg.dScrim);
+    cfg.maxScrim * clamp01(d / Math.max(1, deepest));
 
   /**
    * The lean the stack carries, alternating sides down it.
