@@ -295,12 +295,29 @@ export function deckCard(
   const restScrim = (d: number) =>
     Math.min(cfg.maxScrim, Math.max(0, d - cfg.opaqueDepth) * cfg.dScrim);
 
-  /** Resting position for a card `d` places back in the stack. */
+  /**
+   * The lean the stack carries, alternating sides down it.
+   *
+   * Not scaled by the intro. It used to resolve away as the deck assembled,
+   * which made the stack you browse a flatter thing than the one you land on
+   * — 15 degrees of spread across the cards became 5.
+   */
+  const lean = reduced ? 0 : cfg.lean * splay;
+
+  /**
+   * Resting position for a card `d` places back in the stack.
+   *
+   * The lean lives in here rather than being added at the one place a resting
+   * card is drawn. A card on its way to the back reads its landing rotation
+   * from this too, so leaving the lean out of it would have every shuffle
+   * finish a few degrees short and then drift the rest of the way once the
+   * card was counted as resting.
+   */
   const rest = (d: number) => ({
     x: d * cfg.dx * k + jx * 0.4 * Math.min(1, d),
     y: d * cfg.dy * k + jy * 0.55 * Math.min(1, d),
     scale: 1 - d * cfg.dScale,
-    rotate: d < 0.02 ? 0 : jr * (0.3 + 0.12 * d),
+    rotate: d < 0.02 ? 0 : jr * (0.3 + 0.12 * d) + lean,
   });
 
   /**
@@ -355,10 +372,6 @@ export function deckCard(
   } else {
     const pull = pullAt(depth);
     const g = rest(Math.max(0, depth - pull.depth));
-    // While the deck is still assembling out of the hero the cards carry an
-    // extra lean that resolves into their resting scatter, so the intro is a
-    // rotation as well as a move rather than a block sliding into place.
-    const introLean = reduced ? 0 : (1 - intro) * cfg.introRot * splay;
     x = g.x;
     y = g.y;
     scale = g.scale;
@@ -370,7 +383,7 @@ export function deckCard(
      * rotation the stack carries fades out as a card reaches the front, so it
      * arrives upright rather than snapping straight.
      */
-    rotate = (g.rotate + pull.rot + introLean) * Math.min(1, depth);
+    rotate = (g.rotate + pull.rot) * Math.min(1, depth);
     scrim = restScrim(depth);
     z = 50 - depth;
   }

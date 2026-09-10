@@ -530,10 +530,17 @@ export const DECK = {
     /** Depths over which the pull tapers to nothing. */
     pullReach: 3,
     /**
-     * Extra lean the cards carry while the deck is still assembling out of the
-     * hero, resolving to their resting scatter as the intro completes.
+     * How far the cards lean, alternating sides down the stack.
+     *
+     * It used to resolve away as the deck assembled — five degrees on the
+     * landing screen, nothing once you had scrolled — on the reasoning that
+     * the intro should be a rotation as well as a move. What that actually
+     * did was make the stack you browse a flatter, tidier thing than the one
+     * you land on: 15 degrees of spread across the cards became 5. The lean is
+     * the better read, so it is now simply what the stack is, in both states,
+     * and the intro is carried by the move and the scale instead.
      */
-    introRot: 5,
+    lean: 5,
   },
   mobile: {
     intro: 300,
@@ -562,7 +569,7 @@ export const DECK = {
     pull: 0.22,
     pullRot: 0.5,
     pullReach: 3,
-    introRot: 4,
+    lean: 4,
   },
 } as const;
 
