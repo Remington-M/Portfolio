@@ -58,6 +58,16 @@ export type Project = {
    */
   hue?: number;
   /**
+   * The hero: the clip on the deck card, and the one the project page opens on
+   * before the first shot.
+   *
+   * It is a different job from the gallery, and a clip doing this job should
+   * NOT also appear in `shots`. Every project's hero was duplicated as its
+   * first shot to begin with, which meant the page opened on a clip and then
+   * offered the same clip again as shot one — the reader steps forward and
+   * nothing has changed. Naming it here and leaving it out of the list below is
+   * the whole mechanism; there is no flag to set.
+   *
    * H.264 MP4 is the universal baseline and every browser we care about plays
    * it. VP9 WebM is offered first where present: it is meaningfully smaller at
    * the same quality, and it plays in Chromium builds shipped without the
@@ -92,114 +102,105 @@ export const projects: Project[] = [
     collaborators: PLACEHOLDER_COLLAB,
     src: "/media/airbnb-setup/experience-selection.mp4",
     /**
-     * The onboarding flow, in the order a host walks it: pick what you offer,
-     * say who you are, build the offering, then the photos and the menu that
-     * dress it. Desktop and native alternate because the flow itself does.
+     * Native and desktop alternating through the setup flow, then the menu
+     * work, then the itinerary and the celebration it ends on.
+     *
+     * Two clips are deliberately not here. `experience-selection` is the hero
+     * above, and showing it again as a shot made the first step of the gallery
+     * a step onto the same picture. `offering-photo-selection` is cut from the
+     * gallery but still encoded, so putting it back is a line rather than a
+     * re-export.
      */
     shots: [
       {
         n: "02",
-        title: "Setup Intro",
-        kind: "desktop",
-        src: "/media/airbnb-setup/setup-intro.mp4",
-        aspect: 1.4063,
-      },
-      {
-        n: "03",
-        title: "Menu Intro",
-        kind: "landscape",
-        src: "/media/airbnb-setup/menu-intro.mp4",
-        aspect: 1.7778,
-      },
-      {
-        n: "04",
-        title: "Service Type",
-        kind: "desktop",
-        src: "/media/airbnb-setup/service-type.mp4",
-        aspect: 1.4063,
-      },
-      {
-        n: "05",
         title: "Service Type Selection",
         kind: "portrait",
         src: "/media/airbnb-setup/service-type-selection.mp4",
         aspect: 0.4609,
       },
       {
-        n: "06",
-        title: "Experience Selection",
-        kind: "portrait",
-        src: "/media/airbnb-setup/experience-selection.mp4",
-        aspect: 0.4609,
+        n: "03",
+        title: "Service Type",
+        kind: "desktop",
+        src: "/media/airbnb-setup/service-type.mp4",
+        aspect: 1.4063,
       },
       {
-        n: "07",
+        n: "04",
         title: "About You Editor",
         kind: "portrait",
         src: "/media/airbnb-setup/about-you-editor.mp4",
         aspect: 0.4609,
       },
       {
-        n: "08",
-        title: "Add Offerings",
+        n: "05",
+        title: "Setup Intro",
         kind: "desktop",
-        src: "/media/airbnb-setup/add-offerings.mp4",
+        src: "/media/airbnb-setup/setup-intro.mp4",
         aspect: 1.4063,
       },
       {
-        n: "09",
-        title: "Offering Photo Selection",
-        kind: "desktop",
-        src: "/media/airbnb-setup/offering-photo-selection.mp4",
-        aspect: 1.4063,
+        n: "06",
+        title: "Menu Intro",
+        kind: "landscape",
+        src: "/media/airbnb-setup/menu-intro.mp4",
+        aspect: 1.7778,
       },
       {
-        n: "10",
+        n: "07",
         title: "Menu Group Advance",
         kind: "landscape",
         src: "/media/airbnb-setup/menu-group-advance.mp4",
         aspect: 1.7778,
+        cut: true,
       },
       {
-        n: "11",
+        n: "08",
         title: "Menu Image Fill",
         kind: "landscape",
         src: "/media/airbnb-setup/menu-image-fill.mp4",
         aspect: 1.7778,
-        // The same screen as 10 with the photos filled in. Nothing moves but
-        // the contents of one panel, so nothing should move to say so.
         cut: true,
       },
       {
-        n: "12",
-        title: "Add Photos",
-        kind: "portrait",
-        src: "/media/airbnb-setup/add-photos.mp4",
-        aspect: 0.4609,
-      },
-      {
-        n: "13",
+        n: "09",
         title: "Nav Bar Thumbnail",
         kind: "square",
         src: "/media/airbnb-setup/nav-bar-thumbnail.mp4",
         aspect: 1,
       },
       {
-        n: "14",
+        n: "10",
         title: "Nav Bar Category",
         kind: "square",
         src: "/media/airbnb-setup/nav-bar-category.mp4",
         aspect: 1,
+        cut: true,
       },
       {
-        n: "15",
+        n: "11",
+        title: "Add Photos",
+        kind: "portrait",
+        src: "/media/airbnb-setup/add-photos.mp4",
+        aspect: 0.4609,
+      },
+      {
+        n: "12",
+        title: "Add Offerings",
+        kind: "desktop",
+        src: "/media/airbnb-setup/add-offerings.mp4",
+        aspect: 1.4063,
+      },
+      {
+        n: "13",
         title: "Itinerary Intro",
         kind: "landscape",
         src: "/media/airbnb-setup/itinerary-intro.mp4",
         aspect: 1.7778,
       },
       {
-        n: "16",
+        n: "14",
         title: "Celebration",
         kind: "landscape",
         src: "/media/airbnb-setup/celebration.mp4",
@@ -215,9 +216,9 @@ export const projects: Project[] = [
     collaborators: PLACEHOLDER_COLLAB,
     src: "/media/airbnb-reservations/reservation-detail.mp4",
     /**
-     * Reservation details on both surfaces, then the avatar work underneath
-     * them. The last three are component renders rather than screen captures,
-     * which is why they are wide and sit on white.
+     * The native reservation detail, the avatar work underneath it, then the
+     * desktop surface last. The three avatar clips are component renders
+     * rather than screen captures, which is why they are wide and sit on white.
      */
     shots: [
       {
@@ -229,17 +230,17 @@ export const projects: Project[] = [
       },
       {
         n: "03",
-        title: "Reservation Detail Desktop",
-        kind: "desktop",
-        src: "/media/airbnb-reservations/reservation-detail-desktop.mp4",
-        aspect: 1.4063,
-      },
-      {
-        n: "04",
         title: "Guest Avatars",
         kind: "landscape",
         src: "/media/airbnb-reservations/guest-avatars.mp4",
         aspect: 1.88,
+      },
+      {
+        n: "04",
+        title: "Avatar Pile Studies",
+        kind: "square",
+        src: "/media/airbnb-reservations/avatar-pile-studies.mp4",
+        aspect: 0.752,
       },
       {
         n: "05",
@@ -250,10 +251,10 @@ export const projects: Project[] = [
       },
       {
         n: "06",
-        title: "Avatar Pile Studies",
-        kind: "square",
-        src: "/media/airbnb-reservations/avatar-pile-studies.mp4",
-        aspect: 0.752,
+        title: "Reservation Detail Desktop",
+        kind: "desktop",
+        src: "/media/airbnb-reservations/reservation-detail-desktop.mp4",
+        aspect: 1.4063,
       },
     ],
   },
@@ -278,80 +279,80 @@ export const projects: Project[] = [
     shots: [
       {
         n: "02",
-        title: "Panel Navigation",
-        kind: "desktop",
-        src: "/media/mys/panel-navigation.mp4",
-        aspect: 1.4008,
-      },
-      {
-        n: "03",
-        title: "Photo Tour Desktop",
-        kind: "desktop",
-        src: "/media/mys/photo-tour-desktop.mp4",
-        aspect: 1.4015,
-      },
-      {
-        n: "04",
-        title: "Photo Tour Room Expand",
-        kind: "square",
-        src: "/media/mys/photo-tour-room-expand.mp4",
-        aspect: 1,
-      },
-      {
-        n: "05",
-        title: "Gallery Photo View Grow",
-        kind: "desktop",
-        src: "/media/mys/gallery-photo-view-grow.mp4",
-        aspect: 1.4008,
-      },
-      {
-        n: "06",
-        title: "ML Photo Arranging Presentation",
-        kind: "square",
-        src: "/media/mys/ml-photo-arranging-presentation.mp4",
-        aspect: 0.9643,
-      },
-      {
-        n: "07",
-        title: "ML Sorting Array",
-        kind: "landscape",
-        src: "/media/mys/ml-sorting-array.mp4",
-        aspect: 1.7778,
-      },
-      {
-        n: "08",
-        title: "Auto Arrange",
-        kind: "portrait",
-        src: "/media/mys/auto-arrange.mp4",
-        aspect: 0.4621,
-      },
-      {
-        n: "09",
-        title: "Auto Arrange Desktop",
-        kind: "desktop",
-        src: "/media/mys/auto-arrange-desktop.mp4",
-        aspect: 1.4015,
-      },
-      {
-        n: "10",
-        title: "Amenities Empty State",
-        kind: "portrait",
-        src: "/media/mys/amenities-empty-state.mp4",
-        aspect: 0.4621,
-      },
-      {
-        n: "11",
         title: "LTR Overshoot Presentation",
         kind: "square",
         src: "/media/mys/ltr-overshoot-presentation.mp4",
         aspect: 1,
       },
       {
-        n: "12",
+        n: "03",
         title: "Little People Detail Loop",
         kind: "square",
         src: "/media/mys/little-people-detail-loop.mp4",
         aspect: 1,
+      },
+      {
+        n: "04",
+        title: "ML Sorting Array",
+        kind: "landscape",
+        src: "/media/mys/ml-sorting-array.mp4",
+        aspect: 1.7778,
+      },
+      {
+        n: "05",
+        title: "ML Photo Arranging Presentation",
+        kind: "square",
+        src: "/media/mys/ml-photo-arranging-presentation.mp4",
+        aspect: 0.9643,
+      },
+      {
+        n: "06",
+        title: "Photo Tour Desktop",
+        kind: "desktop",
+        src: "/media/mys/photo-tour-desktop.mp4",
+        aspect: 1.4015,
+      },
+      {
+        n: "07",
+        title: "Photo Tour Room Expand",
+        kind: "square",
+        src: "/media/mys/photo-tour-room-expand.mp4",
+        aspect: 1,
+      },
+      {
+        n: "08",
+        title: "Panel Navigation",
+        kind: "desktop",
+        src: "/media/mys/panel-navigation.mp4",
+        aspect: 1.4008,
+      },
+      {
+        n: "09",
+        title: "Gallery Photo View Grow",
+        kind: "desktop",
+        src: "/media/mys/gallery-photo-view-grow.mp4",
+        aspect: 1.4008,
+      },
+      {
+        n: "10",
+        title: "Auto Arrange",
+        kind: "portrait",
+        src: "/media/mys/auto-arrange.mp4",
+        aspect: 0.4621,
+      },
+      {
+        n: "11",
+        title: "Auto Arrange Desktop",
+        kind: "desktop",
+        src: "/media/mys/auto-arrange-desktop.mp4",
+        aspect: 1.4015,
+      },
+      {
+        n: "12",
+        title: "Amenities Empty State",
+        kind: "portrait",
+        src: "/media/mys/amenities-empty-state.mp4",
+        aspect: 0.4621,
       },
       {
         n: "13",
@@ -373,23 +374,23 @@ export const projects: Project[] = [
     shots: [
       {
         n: "02",
-        title: "Swipe to Go Home",
+        title: "Gesture Navigation",
         kind: "portrait",
         src: "/media/gesture-navigation/swipe-to-go-home.mp4",
         aspect: 0.474,
       },
       {
         n: "03",
-        title: "Back",
+        title: "Overview",
         kind: "portrait",
-        src: "/media/gesture-navigation/back.mp4",
+        src: "/media/gesture-navigation/overview.mp4",
         aspect: 0.474,
       },
       {
         n: "04",
-        title: "Overview",
+        title: "Back",
         kind: "portrait",
-        src: "/media/gesture-navigation/overview.mp4",
+        src: "/media/gesture-navigation/back.mp4",
         aspect: 0.474,
       },
       {
