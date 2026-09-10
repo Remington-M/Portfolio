@@ -75,6 +75,19 @@ export type Project = {
    */
   src?: string;
   srcWebm?: string;
+  /**
+   * A still of the hero, for the cards that have no <video>.
+   *
+   * Only the front card and its two neighbours get a real one — six
+   * autoplaying clips will not hold frame rate on a phone — so without this
+   * the rest of the stack fell back to the flat empty colour. That colour is
+   * dark, which put a card two places back BEHIND one further away in
+   * apparent depth and stopped the stack reading as ordered at all. It is
+   * also handed to the <video> as its poster, so a live card shows the
+   * picture rather than the empty colour while it decodes.
+   *
+   * Drawn by `scripts/posters.mjs`, which reads `src` above.
+   */
   poster?: string;
   shots: Shot[];
 };
@@ -101,6 +114,7 @@ export const projects: Project[] = [
     overview: PLACEHOLDER_OVERVIEW,
     collaborators: PLACEHOLDER_COLLAB,
     src: "/media/airbnb-setup/experience-selection.mp4",
+    poster: "/media/airbnb-setup/poster.jpg",
     /**
      * Native and desktop alternating through the setup flow, then the menu
      * work, then the itinerary and the celebration it ends on.
@@ -215,6 +229,7 @@ export const projects: Project[] = [
     overview: PLACEHOLDER_OVERVIEW,
     collaborators: PLACEHOLDER_COLLAB,
     src: "/media/airbnb-reservations/reservation-detail.mp4",
+    poster: "/media/airbnb-reservations/poster.jpg",
     /**
      * The native reservation detail, the avatar work underneath it, then the
      * desktop surface last. The three avatar clips are component renders
@@ -271,6 +286,7 @@ export const projects: Project[] = [
      * these landed before the per-project folders existed.
      */
     src: "/media/mys/edit-podium.mp4",
+    poster: "/media/mys/poster.jpg",
     /**
      * Every `kind` here is the clip's own aspect ratio rather than a choice —
      * the frame morphs to the shape of whatever is playing in it, so a portrait
@@ -370,6 +386,7 @@ export const projects: Project[] = [
     overview: PLACEHOLDER_OVERVIEW,
     collaborators: PLACEHOLDER_COLLAB,
     src: "/media/gesture-navigation/swipe-to-go-home.mp4",
+    poster: "/media/gesture-navigation/poster.jpg",
     /** The three system gestures, then invoking the Assistant with a fourth. */
     shots: [
       {
@@ -420,6 +437,7 @@ export const projects: Project[] = [
       "I had the privilege to work on the Pixel 1–5. Getting to build the foundation for Google’s phone with a small design team was a highlight of my career.\n\nI was responsible for core system transitions, Google Assistant & Search integrations, branded moments, core infrastructure, physics based motion and much more!",
     collaborators: "Name Surname, Name Surname, Name Surname",
     src: "/media/google-pixel/pixel-3-welcome.mp4",
+    poster: "/media/google-pixel/poster.jpg",
     /**
      * The overview: system motion first, then the branded moments, then the
      * two side-by-side comparisons that end on a square.
