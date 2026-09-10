@@ -385,6 +385,15 @@ export const MOBILE_REF = { w: 390, h: 844 } as const;
  * animation and this is it, on a timer instead of a wheel.
  */
 export const HOME_IDLE = {
+  /**
+   * How long the card you arrive on is held before anything is dealt.
+   *
+   * Longer than the cadence that follows. The first card is the one someone
+   * is actually reading — they have just landed, and the deck turning over
+   * while they are still taking it in reads as impatience rather than as an
+   * invitation.
+   */
+  first: 6000,
   /** Milliseconds a card rests at the front before the next one is dealt. */
   every: 3000,
   /**

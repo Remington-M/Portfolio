@@ -15,7 +15,7 @@ import { motionValue, type MotionValue } from "motion/react";
 import { usePathname } from "next/navigation";
 import { BREAKPOINT } from "@/lib/design";
 import { makeStage, type Stage } from "@/lib/geometry";
-import { projectIndex } from "@/lib/projects";
+import { openingIndex, projectIndex } from "@/lib/projects";
 
 /**
  * Shared stage state.
@@ -107,8 +107,14 @@ export function useStage(): StageState {
 export function StageProvider({ children }: { children: ReactNode }) {
   const values = useMemo(
     () => ({
-      p: motionValue(0),
-      pTarget: motionValue(0),
+      /**
+       * Seeded at the opening card rather than at 0, so the site LANDS there
+       * instead of animating to it. Both of these and the layer's own spring
+       * start from the same place; leave any one of them at zero and the deck
+       * deals itself a card the moment the page appears.
+       */
+      p: motionValue(openingIndex()),
+      pTarget: motionValue(openingIndex()),
       pi: motionValue(0),
       cp: motionValue(0),
       selected: motionValue(-1),

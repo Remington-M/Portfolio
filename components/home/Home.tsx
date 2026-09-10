@@ -167,6 +167,17 @@ export default function Home() {
     }
 
     /**
+     * On the landing screen the deal owns the deck, and this handler does not.
+     *
+     * Everything below reads a card out of the scroll position, and at the top
+     * that position says "the first one" — which overwrote the card the deck
+     * opens on the moment the page mounted, and would undo every turn the
+     * timer made. There is nothing to read up here anyway: no ledger row is
+     * lit and no shot is showing.
+     */
+    if (idling.current) return;
+
+    /**
      * While a turn is owed, this handler does nothing else.
      *
      * Everything below picks a card by comparing the scroll position with the
@@ -347,7 +358,14 @@ export default function Home() {
    */
   useEffect(() => {
     if (!idle || reduced) return;
-    const id = setInterval(() => {
+    /**
+     * A chain of timeouts rather than one interval, because the first wait is
+     * longer than the rest: the card you arrive on gets a proper look before
+     * the deck starts turning over.
+     */
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      timer = setTimeout(tick, HOME_IDLE.every);
       // Nothing dealt into a hidden tab: the timer would bank a dozen turns
       // and pay them out in one riffle the moment it came back.
       if (document.visibilityState !== "visible") return;
@@ -360,8 +378,9 @@ export default function Home() {
       } else {
         pTarget.set(next);
       }
-    }, HOME_IDLE.every);
-    return () => clearInterval(id);
+    };
+    timer = setTimeout(tick, HOME_IDLE.first);
+    return () => clearTimeout(timer);
   }, [idle, reduced, n, pTarget, rebaseDeck, deckDriven]);
 
   const jumpTo = useCallback(

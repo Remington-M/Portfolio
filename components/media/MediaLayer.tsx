@@ -19,7 +19,7 @@ import {
 } from "motion/react";
 import Link from "next/link";
 import { useStage } from "./stage";
-import { projects, stripeFill, type Shot } from "@/lib/projects";
+import { openingIndex, projects, stripeFill, type Shot } from "@/lib/projects";
 import { asset, media } from "@/lib/asset";
 import {
   CASE,
@@ -37,6 +37,7 @@ import {
   deckCard,
   deckCardSize,
   deckThrow,
+  frontIndex,
   railCard,
   type Geo,
 } from "@/lib/geometry";
@@ -416,7 +417,8 @@ export default function MediaLayer() {
     /** Which side of the stack each card is going round this frame. */
     side: new Float64Array(projects.length).fill(1),
   });
-  const deckSpring = useRef(spring(0));
+  // Seeded to match `p` and `pTarget`, so the first frame is already there.
+  const deckSpring = useRef(spring(openingIndex()));
 
   const grab = useCallback(() => {
     const g = gesture.current;
@@ -634,7 +636,18 @@ export default function MediaLayer() {
    */
   const [dragIndex, setDragIndex] = useState(-1);
 
-  const [nearIndex, setNearIndex] = useState(0);
+  /**
+   * Seeded from `p` rather than from zero.
+   *
+   * `p` now starts at the opening card, and a MotionValue's initial value
+   * fires no change event — so this sat at 0 while the deck was resting on
+   * another card. Everything that asks which card is in front read the wrong
+   * one: the card you could see was never asked to play, and the one that was
+   * asked is behind it where nobody can see it.
+   */
+  const [nearIndex, setNearIndex] = useState(() =>
+    frontIndex(p.get(), projects.length),
+  );
   useMotionValueEvent(p, "change", (value) => {
     const next = (((Math.round(value) % projects.length) + projects.length) %
       projects.length);

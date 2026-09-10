@@ -517,6 +517,24 @@ export function titleLines(project: Project): readonly string[] {
   return project.displayTitle ?? [project.title];
 }
 
+/**
+ * The card the deck rests on when the site first loads.
+ *
+ * Named by slug rather than by position, so reordering the list above cannot
+ * silently change which project the site opens on — that is a decision about
+ * what to lead with, not a consequence of where a project sits in a ledger.
+ *
+ * Only the opening. Scrolling down to the deck still settles on the FIRST
+ * project, so the stack you browse agrees with the row the ledger starts on;
+ * this is what you land on, not where browsing begins.
+ */
+export const OPENING_SLUG = "airbnb-reservations";
+
+/** Its index, or the first project if the slug ever stops matching. */
+export function openingIndex(): number {
+  return Math.max(0, projectIndex(OPENING_SLUG));
+}
+
 export function projectBySlug(slug: string) {
   return projects.find((p) => p.slug === slug);
 }
