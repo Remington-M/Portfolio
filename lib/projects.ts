@@ -424,10 +424,15 @@ export const projects: Project[] = [
      * The overview: system motion first, then the branded moments, then the
      * two side-by-side comparisons that end on a square.
      *
-     * Two shots have no export and are gone rather than sitting there as a
-     * stripe fill: a Folder Animation that was never cut, and the Assistant
-     * work, which was briefly its own project and did not have the footage to
-     * carry one. Its invocation clip stayed and lives here now.
+     * The Pixel 3 welcome is not among them. It is the hero above, and unlike
+     * the rest of this footage that clip was re-exported as the screen alone
+     * — no phone body drawn onto white — so it fills the deck card the way
+     * every other project's hero does.
+     *
+     * Two more have no export at all and are gone rather than sitting there
+     * as a stripe fill: a Folder Animation that was never cut, and the
+     * Assistant work, which was briefly its own project and did not have the
+     * footage to carry one. Its invocation clip stayed and lives here now.
      */
     shots: [
       {
@@ -460,27 +465,20 @@ export const projects: Project[] = [
       },
       {
         n: "06",
-        title: "Pixel 3 Welcome",
-        kind: "portrait",
-        src: "/media/google-pixel/pixel-3-welcome.mp4",
-        aspect: 0.474,
-      },
-      {
-        n: "07",
         title: "Boot Animation",
         kind: "portrait",
         src: "/media/google-pixel/boot-animation.mp4",
         aspect: 0.4776,
       },
       {
-        n: "08",
+        n: "07",
         title: "App Opening",
         kind: "square",
         src: "/media/google-pixel/app-opening.mp4",
         aspect: 1,
       },
       {
-        n: "09",
+        n: "08",
         title: "Task Switching",
         kind: "square",
         src: "/media/google-pixel/task-switching.mp4",
