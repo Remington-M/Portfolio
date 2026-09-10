@@ -215,15 +215,38 @@ export function deckZ(i: number, count: number, p: number): number {
 /**
  * Fan angle for a card `depth` places back, in degrees.
  *
- * Depth is fractional while the deck moves, so the angle is read between the
- * two nearest authored steps rather than snapped to one — a card settling into
- * the front slot turns smoothly upright instead of flicking there.
+ * Derived from the deck's own size rather than read from a list, so both ends
+ * are square whatever the deck holds: the front card because it is the one
+ * being looked at, and the deepest because the arc that carries a card to the
+ * back has no fan of its own — anything else and every dealt card snaps into
+ * its fan angle the instant it stops travelling.
+ *
+ * In between, cards splay to alternating sides, further the deeper they sit,
+ * with the outermost pair reaching `spread`. Depth is fractional while the
+ * deck moves, so the angle is read between the two nearest whole steps rather
+ * than snapped to one — a card settling into the front slot turns smoothly
+ * upright instead of flicking there.
  */
-function fanAngle(depth: number, angles: readonly number[]): number {
-  const n = angles.length;
-  const lo = Math.floor(depth) % n;
-  const hi = (lo + 1) % n;
-  return lerp(angles[lo], angles[hi], depth - Math.floor(depth));
+function fanAngle(depth: number, deepest: number, spread: number): number {
+  const at = (d: number) => {
+    if (deepest < 2 || d <= 0 || d >= deepest) return 0;
+    /**
+     * The cards between the two ends lie in an even arc from one edge of the
+     * fan to the other.
+     *
+     * The angles used to alternate sides — first card left, second right,
+     * third further left — which is even and balanced when there is an even
+     * number of cards to place, and lopsided the moment there is not. At five
+     * projects it put two cards out to the left and one to the right, and the
+     * fan sat off to one side. Laid out in order instead, the arc is symmetric
+     * whatever the deck holds.
+     */
+    const fanned = deepest - 1;
+    if (fanned === 1) return 0;
+    return -spread + (2 * spread * (d - 1)) / (fanned - 1);
+  };
+  const lo = Math.floor(depth);
+  return lerp(at(lo), at(lo + 1), depth - lo);
 }
 
 /**
@@ -409,7 +432,7 @@ export function deckCard(
      * plain resting slot and the deepest fan angle is zero, so it lands on the
      * fan without a step.
      */
-    const fan = reduced ? 0 : fanAngle(depth, cfg.fan.angles) * (1 - intro);
+    const fan = reduced ? 0 : fanAngle(depth, deepest, cfg.fan.spread) * (1 - intro);
     const fanRad = (fan * Math.PI) / 180;
     const pivot = cfg.fan.pivot * k;
     x = g.x + pivot * Math.sin(fanRad);

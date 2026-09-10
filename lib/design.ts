@@ -575,14 +575,24 @@ export const DECK = {
      *
      * Before the deck assembles it sits fanned like a hand of cards: the front
      * card square to the viewer, the rest splayed either side of it around a
-     * pivot below the stack, the deepest straight behind. `angles` is degrees
-     * by depth; `pivot` is how far below a card's centre the fan turns about,
-     * in authored pixels, before the landing scale. Both resolve to nothing as
-     * the intro completes, so the fold, the shrink and the travel to the right
-     * are one move — and the lean the stack keeps is what the fan folds back
-     * down to.
+     * pivot below the stack, the deepest straight behind. `spread` is how far
+     * the outermost card turns; `pivot` is how far below a card's centre the
+     * fan turns about, in authored pixels, before the landing scale. Both
+     * resolve to nothing as the intro completes, so the fold, the shrink and
+     * the travel to the right are one move — and the lean the stack keeps is
+     * what the fan folds back down to.
+     *
+     * An angle per card, written out by hand, is what this was: six of them,
+     * ending in a zero that kept the deepest card square. The deck is five
+     * cards now, so the list ran out one short and the deepest card took the
+     * FIFTH angle — 22 degrees — while the arc that delivers it there carries
+     * no fan at all. Every card dealt to the back arrived square and then
+     * snapped 22 degrees the moment it counted as resting. The angles are
+     * derived from the deck's own size instead, so the two ends are always
+     * zero however many projects there are. Six cards still resolve to exactly
+     * the hand-written set.
      */
-    fan: { angles: [0, -11, 11, -22, 22, 0] as const, pivot: 360 },
+    fan: { spread: 22, pivot: 360 },
   },
   mobile: {
     intro: 300,
@@ -611,7 +621,7 @@ export const DECK = {
     pullRot: 0.5,
     pullReach: 3,
     lean: 4,
-    fan: { angles: [0, -6, 6, -12, 12, 0] as const, pivot: 260 },
+    fan: { spread: 12, pivot: 260 },
   },
 } as const;
 
