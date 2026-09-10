@@ -570,6 +570,19 @@ export const DECK = {
      * and the intro is carried by the move and the scale instead.
      */
     lean: 5,
+    /**
+     * The landing fan.
+     *
+     * Before the deck assembles it sits fanned like a hand of cards: the front
+     * card square to the viewer, the rest splayed either side of it around a
+     * pivot below the stack, the deepest straight behind. `angles` is degrees
+     * by depth; `pivot` is how far below a card's centre the fan turns about,
+     * in authored pixels, before the landing scale. Both resolve to nothing as
+     * the intro completes, so the fold, the shrink and the travel to the right
+     * are one move — and the lean the stack keeps is what the fan folds back
+     * down to.
+     */
+    fan: { angles: [0, -11, 11, -22, 22, 0] as const, pivot: 360 },
   },
   mobile: {
     intro: 300,
@@ -598,6 +611,7 @@ export const DECK = {
     pullRot: 0.5,
     pullReach: 3,
     lean: 4,
+    fan: { angles: [0, -6, 6, -12, 12, 0] as const, pivot: 260 },
   },
 } as const;
 

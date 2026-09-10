@@ -213,6 +213,20 @@ export function deckZ(i: number, count: number, p: number): number {
 }
 
 /**
+ * Fan angle for a card `depth` places back, in degrees.
+ *
+ * Depth is fractional while the deck moves, so the angle is read between the
+ * two nearest authored steps rather than snapped to one — a card settling into
+ * the front slot turns smoothly upright instead of flicking there.
+ */
+function fanAngle(depth: number, angles: readonly number[]): number {
+  const n = angles.length;
+  const lo = Math.floor(depth) % n;
+  const hi = (lo + 1) % n;
+  return lerp(angles[lo], angles[hi], depth - Math.floor(depth));
+}
+
+/**
  * One deck card's geometry.
  *
  * `p` is fractional on purpose — the shuffle is continuous, and a card whose
@@ -381,8 +395,25 @@ export function deckCard(
   } else {
     const pull = pullAt(depth);
     const g = rest(Math.max(0, depth - pull.depth));
-    x = g.x;
-    y = g.y;
+    /**
+     * The landing fan, folding shut as the deck assembles.
+     *
+     * Each card turns about a pivot below the stack by its fan angle, which is
+     * what puts the cards side by side rather than merely leaning: turning a
+     * card about a point that far below it carries it sideways, and the
+     * further round it turns the more it also lifts. Scaled by how much of the
+     * intro is left, so the fold, the shrink and the travel to the right are
+     * all the same scroll and scrubbing back up re-fans exactly.
+     *
+     * Only cards at rest fan. A card dealt to the back travels its arc to the
+     * plain resting slot and the deepest fan angle is zero, so it lands on the
+     * fan without a step.
+     */
+    const fan = reduced ? 0 : fanAngle(depth, cfg.fan.angles) * (1 - intro);
+    const fanRad = (fan * Math.PI) / 180;
+    const pivot = cfg.fan.pivot * k;
+    x = g.x + pivot * Math.sin(fanRad);
+    y = g.y + pivot * (1 - Math.cos(fanRad));
     scale = g.scale;
     /**
      * The front card is always square to the viewer.
@@ -392,7 +423,7 @@ export function deckCard(
      * rotation the stack carries fades out as a card reaches the front, so it
      * arrives upright rather than snapping straight.
      */
-    rotate = (g.rotate + pull.rot) * Math.min(1, depth);
+    rotate = (g.rotate + pull.rot) * Math.min(1, depth) + fan;
     scrim = restScrim(depth);
     z = 50 - depth;
   }
