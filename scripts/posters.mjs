@@ -35,8 +35,16 @@ const source = await readFile(join(REPO, "lib/projects.ts"), "utf8");
  * at closely — it is what a card two places back is wearing.
  */
 const WIDTH = 800;
-/** Where in the clip to take it from. Far enough in to be past a fade-up. */
-const AT = 0.45;
+/**
+ * The first frame, and it has to be the first frame.
+ *
+ * A poster is what the card wears until it plays, and these clips play from
+ * the start — so anything else is a picture that jumps the instant playback
+ * begins. Taken from the middle, as this first did, every card in the stack
+ * showed a moment the clip has not reached yet and then cut backwards to its
+ * opening the moment it came to the front.
+ */
+const AT = 0;
 
 const marks = [...source.matchAll(/slug: "([a-z0-9-]+)",/g)].map((m) => ({
   slug: m[1],
@@ -65,10 +73,7 @@ for (const [i, mark] of marks.entries()) {
   const out = `${hero.slice(0, hero.lastIndexOf("/"))}/poster.jpg`;
   const outFile = join(REPO, "public", out);
 
-  const { stdout } = await run("ffprobe", [
-    "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", clip,
-  ]);
-  const at = (Number(stdout.trim()) || 1) * AT;
+  const at = AT;
 
   await run("ffmpeg", [
     "-hide_banner", "-loglevel", "error", "-y",
@@ -84,7 +89,7 @@ for (const [i, mark] of marks.entries()) {
   const size = (await stat(outFile)).size;
   console.log(
     `  ${mark.slug.padEnd(24)} ${out}  ${(size / 1024).toFixed(0)}KB  ` +
-      `from ${hero.replace("/media/", "")} @ ${at.toFixed(1)}s`,
+      `from ${hero.replace("/media/", "")} @ ${at.toFixed(2)}s`,
   );
   wrote += 1;
 }
