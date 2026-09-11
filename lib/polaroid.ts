@@ -52,6 +52,8 @@ export const PRINT = {
    * as the print turns, which is what makes it a thing and not a picture.
    */
   thickness: 1.2 / 88,
+  /** How far inside the outline the edge strip sits, in card widths. */
+  wallInset: 0.2 / 88,
   /** Distance from the camera to the table, in card widths. */
   camera: 3.6,
   /** Room the canvas keeps around the card for the swing, as multiples. */
@@ -159,9 +161,12 @@ export function buildMesh(cols: number, rows: number) {
  * The vertex shader places it on the deformed sheet, so the edge bends and
  * twists with the faces it joins.
  */
-export function buildWalls(radius: number, w: number, h: number) {
+export function buildWalls(radius: number, w: number, h: number, inset = 0) {
   const pts: { x: number; y: number; nx: number; ny: number }[] = [];
-  const hw = w / 2, hh = h / 2, r = radius;
+  // Held a hair inside the faces' outline so the strip never shares a
+  // pixel's depth with the face it meets — that seam z-fights otherwise, and
+  // shows as a sparkle of white edge along the side of the back.
+  const hw = w / 2 - inset, hh = h / 2 - inset, r = Math.max(radius - inset, 0.0005);
   const arc = 5;
   // Corners, anticlockwise from the top-right.
   const corners = [

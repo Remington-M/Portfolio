@@ -121,7 +121,7 @@ export default function Polaroid({ src, alt, back, width }: Props) {
     const ibo = gl.createBuffer();
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, mesh.index, gl.STATIC_DRAW);
-    const walls = buildWalls(PRINT.radius, PRINT.w, PRINT.h);
+    const walls = buildWalls(PRINT.radius, PRINT.w, PRINT.h, PRINT.wallInset);
     const wvbo = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, wvbo);
     gl.bufferData(gl.ARRAY_BUFFER, walls.data, gl.STATIC_DRAW);
@@ -209,6 +209,19 @@ export default function Polaroid({ src, alt, back, width }: Props) {
     solid(gl, backTex, 1, [30, 29, 27]);
     gl.uniform2f(U.fit, 1, 1);
 
+    /**
+     * Anisotropic filtering, where the driver offers it. A print seen at a
+     * grazing angle is a texture minified far more along one axis than the
+     * other, and plain mipmaps blur it; this keeps the caption's letters
+     * sharp through the turn.
+     */
+    const aniso =
+      gl.getExtension("EXT_texture_filter_anisotropic") ||
+      gl.getExtension("WEBKIT_EXT_texture_filter_anisotropic");
+    const anisoMax = aniso
+      ? Math.min(8, gl.getParameter(aniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT) as number)
+      : 0;
+
     let photoReady = false;
     const img = new Image();
     img.decoding = "async";
@@ -216,7 +229,7 @@ export default function Polaroid({ src, alt, back, width }: Props) {
       if (dead) return;
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, photoTex);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, img);
+      upload(gl, potCopy(img, img.naturalWidth, img.naturalHeight), aniso, anisoMax);
       // Cover-fit the picture into the square window.
       const a = img.naturalWidth / img.naturalHeight;
       gl.uniform2f(U.fit, a > 1 ? 1 / a : 1, a > 1 ? 1 : a);
@@ -230,7 +243,7 @@ export default function Polaroid({ src, alt, back, width }: Props) {
       if (dead || !surface) return;
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, backTex);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, surface);
+      upload(gl, potCopy(surface, surface.width, surface.height), aniso, anisoMax);
       backDrawn = true;
       wake();
     });
@@ -386,10 +399,16 @@ export default function Polaroid({ src, alt, back, width }: Props) {
       gl.cullFace(gl.FRONT);
       useSheet(-0.5);
       gl.drawElements(gl.TRIANGLES, mesh.index.length, gl.UNSIGNED_SHORT, 0);
-      gl.disable(gl.CULL_FACE);
+      // Only the outward side of the strip, and nudged back in depth so the
+      // faces always win where the two meet.
+      gl.cullFace(gl.BACK);
+      gl.enable(gl.POLYGON_OFFSET_FILL);
+      gl.polygonOffset(1, 2);
       gl.uniform1f(U.wall, 1);
       useWalls();
       gl.drawElements(gl.TRIANGLES, walls.index.length, gl.UNSIGNED_SHORT, 0);
+      gl.disable(gl.POLYGON_OFFSET_FILL);
+      gl.disable(gl.CULL_FACE);
 
       const moving =
         !isAtRest(S.top, target.flip) ||
@@ -602,6 +621,40 @@ function makeTexture(gl: WebGLRenderingContext, unit: number): WebGLTexture {
   return tex;
 }
 
+/**
+ * WebGL 1 only mipmaps power-of-two textures, so anything drawn on the
+ * print is resampled onto one first. The shader addresses both faces in
+ * 0–1 uv, so a stretched copy maps back exactly.
+ */
+function potCopy(
+  source: HTMLImageElement | HTMLCanvasElement,
+  w: number,
+  h: number,
+): HTMLCanvasElement {
+  const pot = (n: number) => Math.pow(2, Math.round(Math.log2(n)));
+  const c = document.createElement("canvas");
+  c.width = Math.min(2048, Math.max(512, pot(w)));
+  c.height = Math.min(2048, Math.max(512, pot(h)));
+  const ctx = c.getContext("2d")!;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(source, 0, 0, c.width, c.height);
+  return c;
+}
+
+function upload(
+  gl: WebGLRenderingContext,
+  surface: HTMLCanvasElement,
+  aniso: EXT_texture_filter_anisotropic | null,
+  anisoMax: number,
+) {
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, surface);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.generateMipmap(gl.TEXTURE_2D);
+  if (aniso && anisoMax > 1) {
+    gl.texParameterf(gl.TEXTURE_2D, aniso.TEXTURE_MAX_ANISOTROPY_EXT, anisoMax);
+  }
+}
+
 function solid(
   gl: WebGLRenderingContext,
   tex: WebGLTexture,
@@ -631,7 +684,7 @@ function solid(
  * webfont, then handed to the shader as a texture.
  * ------------------------------------------------------------------ */
 async function drawBack(lines: readonly string[]): Promise<HTMLCanvasElement | null> {
-  const W = 704;
+  const W = 1024;
   const H = Math.round(W * PRINT.h);
   const c = document.createElement("canvas");
   c.width = W;
