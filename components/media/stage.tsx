@@ -43,6 +43,15 @@ export type StageState = {
   pTarget: MotionValue<number>;
   /** Hero-to-deck intro progress, 0–1. */
   pi: MotionValue<number>;
+  /**
+   * How far the landing deck has been dealt onto the screen, 0–1.
+   *
+   * Home runs it after the hero sentence has finished arriving. It starts at
+   * 0 only on a fresh load of the landing screen — anywhere else the deck is
+   * already present, and a project page or a return to the deck must not
+   * find the cards below the stage.
+   */
+  deal: MotionValue<number>;
   /** Project page shot position. */
   cp: MotionValue<number>;
   /** Index of the project whose card is the shared element, or -1. */
@@ -105,6 +114,7 @@ export function useStage(): StageState {
 }
 
 export function StageProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const values = useMemo(
     () => ({
       /**
@@ -116,15 +126,17 @@ export function StageProvider({ children }: { children: ReactNode }) {
       p: motionValue(openingIndex()),
       pTarget: motionValue(openingIndex()),
       pi: motionValue(0),
+      deal: motionValue((pathname ?? "/").startsWith("/work/") ? 1 : 0),
       cp: motionValue(0),
       selected: motionValue(-1),
       vw: motionValue(0),
       vh: motionValue(0),
     }),
+    // Only on mount: the deal is seeded for the route the site opened on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
-  const pathname = usePathname();
   /**
    * Normalised route, without a trailing slash.
    *

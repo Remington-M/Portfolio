@@ -8,6 +8,7 @@ import {
   SCALE,
   frameBox,
   type ShotKind,
+  HERO_INTRO,
 } from "./design";
 import { clamp, clamp01, lerp, smoothstep } from "./spring";
 
@@ -260,6 +261,9 @@ function fanAngle(depth: number, deepest: number, spread: number): number {
  * depth passes the back of the stack swings out to the right, rotates in Y and
  * tucks in behind. That arc is the signature motion of the site.
  */
+/** Cubic ease-out, for a rise that lands softly. */
+const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+
 export function deckCard(
   i: number,
   count: number,
@@ -289,6 +293,11 @@ export function deckCard(
    * it is sharing the air with others and has to get around them too.
    */
   arcScale = 1,
+  /**
+   * How far the landing deck has been dealt in, 0–1. Below 1 the cards sit
+   * under the stage and the fan is closed; see HERO_INTRO.deal.
+   */
+  deal = 1,
 ): Geo {
   const cfg = stage.mobile ? DECK.mobile : DECK.desktop;
   const size = deckCardSize(stage);
@@ -418,8 +427,18 @@ export function deckCard(
    * so the fan, the shrink and the travel to the right are one scroll and
    * scrubbing back up re-fans exactly.
    */
+  /**
+   * The deal: cards rise from below the stage as one stack, and the fan
+   * opens over the back half of the rise so they arrive and then sprawl.
+   */
+  const dealRise = 1 - easeOut(clamp01(deal / 0.85));
+  const dealSpread = smoothstep(
+    clamp01((deal - HERO_INTRO.deal.spreadFrom) / (1 - HERO_INTRO.deal.spreadFrom)),
+  );
   const fanAt = (d: number) => {
-    const deg = reduced ? 0 : fanAngle(d, deepest, cfg.fan.spread) * (1 - intro);
+    const deg = reduced
+      ? 0
+      : fanAngle(d, deepest, cfg.fan.spread) * (1 - intro) * dealSpread;
     const rad = (deg * Math.PI) / 180;
     const pivot = cfg.fan.pivot * k;
     return { deg, dx: pivot * Math.sin(rad), dy: pivot * (1 - Math.cos(rad)) };
@@ -491,7 +510,11 @@ export function deckCard(
 
   return {
     x: cx + shift - size.width / 2 + x,
-    y: cy - size.height / 2 + y,
+    y:
+      cy -
+      size.height / 2 +
+      y +
+      dealRise * size.height * HERO_INTRO.deal.riseHeights,
     w: size.width,
     h: size.height,
     radius: size.radius,

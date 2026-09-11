@@ -281,6 +281,7 @@ export default function MediaLayer() {
     p,
     pTarget,
     pi,
+    deal,
     cp,
     selected,
     mode,
@@ -1197,6 +1198,7 @@ export default function MediaLayer() {
 
     const pv = p.get();
     const pig = pi.get();
+    const dealv = deal.get();
     const cpv = cp.get();
     // First frame of a route change: this is the shot it arrived on. Latched
     // here rather than in the effect so it cannot read a `cp` that the page has
@@ -1455,6 +1457,7 @@ export default function MediaLayer() {
         scratch.current.side[i] as 1 | -1,
         clock,
         scratch.current.arcScale[i],
+        dealv,
       );
       let target: Geo;
       if (mode === "case") {

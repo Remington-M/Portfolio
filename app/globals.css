@@ -286,6 +286,36 @@ a:hover {
   }
 }
 
+/* ------------------------------------------------------------------ *
+ * Hero — "motion", on hover
+ *
+ * The span holds the real text; the canvas inside it is the spiral, laid
+ * over the word and clipped to it (see HeroWord). Hover crossfades the two:
+ * the ink goes transparent as the canvas comes up. Clocks come from
+ * HERO_GRADIENT via custom properties on the span.
+ * ------------------------------------------------------------------ */
+.hero-motion {
+  position: relative;
+  display: inline-block;
+  color: var(--ink);
+  transition: color var(--fade-out) cubic-bezier(.2,.85,.15,1);
+}
+.hero-motion > canvas {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--fade-out) cubic-bezier(.2,.85,.15,1);
+}
+.hero-motion:hover {
+  color: transparent;
+  transition-duration: var(--fade-in);
+}
+.hero-motion:hover > canvas {
+  opacity: 1;
+  transition-duration: var(--fade-in);
+}
+
 /* Visible focus for keyboard users — the design specifies none. */
 :focus-visible {
   outline: 2px solid var(--link-hover);

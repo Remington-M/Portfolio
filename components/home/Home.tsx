@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
+  animate,
   motion,
   useMotionValueEvent,
   useTransform,
@@ -11,11 +12,15 @@ import {
 import { useStage } from "@/components/media/stage";
 import Header from "@/components/Header";
 import Ledger from "./Ledger";
+import HeroWord from "./HeroWord";
+import HeroIntro from "./HeroIntro";
 import Ticks from "@/components/Ticks";
 import { projects } from "@/lib/projects";
 import {
   DECK,
   DECK_MOTION,
+  HERO_INTRO,
+  HOUSE,
   HERO_EXIT,
   HOME_IDLE,
   TYPE,
@@ -35,6 +40,7 @@ import { frontIndex, stageY } from "@/lib/geometry";
  * The cards themselves are not here. They live in the persistent media layer so
  * they can survive the navigation into a project page.
  */
+
 export default function Home() {
   const {
     p,
@@ -47,9 +53,38 @@ export default function Home() {
     deckDriven,
     registerDeckScroll,
     rebaseDeck,
+    deal,
   } = useStage();
   const reduced = useReducedMotion() ?? false;
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * The landing sequence plays on a fresh arrival only. Coming back from a
+   * project there is a deck to restore and no hero moment to stage.
+   */
+  const [playIntro] = useState(() => restoreDeck() === null && deal.get() < 1);
+
+  /**
+   * Deal the cards in once the sentence has arrived. The layer's own springs
+   * carry each card, so this is one eased value they all follow.
+   */
+  const [dealt, setDealt] = useState(() => deal.get() >= 1);
+  const dealIn = useCallback(() => {
+    if (deal.get() >= 1) {
+      setDealt(true);
+      return;
+    }
+    if (reduced) {
+      deal.set(1);
+      setDealt(true);
+      return;
+    }
+    animate(deal, 1, {
+      duration: HERO_INTRO.deal.duration,
+      ease: HOUSE,
+      onComplete: () => setDealt(true),
+    });
+  }, [deal, reduced]);
 
   /**
    * One continuous scroll, inferred from the gaps between its events, and how
@@ -164,6 +199,9 @@ export default function Home() {
       idling.current = false;
       setIdle(false);
       owed.current = true;
+      // Scrolling into the deck before it has finished dealing: the cards are
+      // wanted now, and their own springs smooth the rest of the way.
+      if (deal.get() < 1) deal.set(1);
     }
 
     /**
@@ -269,6 +307,7 @@ export default function Home() {
   }, [
     pTarget,
     pi,
+    deal,
     n,
     lap,
     cfg.intro,
@@ -357,7 +396,9 @@ export default function Home() {
    * and the animation at once is invisible.
    */
   useEffect(() => {
-    if (!idle || reduced) return;
+    // Not until the cards are on the screen: a card thrown while the deck is
+    // still rising is a collision, not a deal.
+    if (!idle || !dealt || reduced) return;
     /**
      * A chain of timeouts rather than one interval, because the first wait is
      * longer than the rest: the card you arrive on gets a proper look before
@@ -381,7 +422,7 @@ export default function Home() {
     };
     timer = setTimeout(tick, HOME_IDLE.first);
     return () => clearTimeout(timer);
-  }, [idle, reduced, n, pTarget, rebaseDeck, deckDriven]);
+  }, [idle, dealt, reduced, n, pTarget, rebaseDeck, deckDriven]);
 
   const jumpTo = useCallback(
     (i: number) => {
@@ -577,8 +618,30 @@ export default function Home() {
                   textWrap: "pretty",
                 }}
               >
-                Hey, I&rsquo;m Remington and I make software come to life with
-                motion.
+                <HeroIntro
+                  play={playIntro}
+                  hey="Hey"
+                  words={[
+                    "I\u2019m",
+                    "Remington",
+                    "and",
+                    "I",
+                    "make",
+                    "software",
+                    "come",
+                    "to",
+                    "life",
+                    "with",
+                    /* The hero block is pointer-transparent so the deck
+                       underneath takes the wheel; this one word takes the
+                       hand back. */
+                    <span key="motion" style={{ pointerEvents: "auto" }}>
+                      <HeroWord>motion</HeroWord>.
+                    </span>,
+                  ]}
+                  onDone={dealIn}
+                  scale={ts}
+                />
               </h1>
             </motion.div>
 
