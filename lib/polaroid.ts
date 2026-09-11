@@ -349,11 +349,13 @@ float roundedBox(vec2 p, vec2 b, float r) {
 }
 
 vec3 develop(vec3 target, vec2 st, float t) {
-  float blot = fbm(st * 3.2);
-  float blot2 = fbm(st * 7.0 + 5.0);
-  // Reagent spreads up from the pod, unevenly.
-  float delay = st.y * 0.13 + blot * 0.17 + blot2 * 0.05;
-  float local = clamp((t - delay) / 0.68, 0.0, 1.0);
+  // Reagent spreads up from the pod, a little unevenly. The unevenness is
+  // kept broad and shallow — the earlier version let a fractal noise map
+  // decide the timing, and the picture came up as blotches rather than as
+  // a picture.
+  float blot = fbm(st * 2.2);
+  float delay = st.y * 0.12 + (blot - 0.5) * 0.08;
+  float local = clamp((t - delay) / 0.82, 0.0, 1.0);
 
   float aC = smoothstep(0.04, 0.72, local);
   float aM = smoothstep(0.17, 0.86, local);
@@ -363,21 +365,32 @@ vec3 develop(vec3 target, vec2 st, float t) {
   // The muddy middle: low contrast, a little desaturated, warm-grey haze.
   float mid = 1.0 - local;
   float lum = dot(dye, vec3(0.299, 0.587, 0.114));
-  dye = mix(dye, vec3(lum), mid * 0.35);
-  dye = mix(dye, vec3(0.64, 0.60, 0.54), mid * 0.22);
-  // Uneven density that evens out as it finishes.
-  dye *= 1.0 - (blot - 0.5) * 0.25 * mid;
+  dye = mix(dye, vec3(lum), mid * 0.3);
+  dye = mix(dye, vec3(0.64, 0.60, 0.54), mid * 0.2);
 
-  // The opacifier.
-  vec3 veil = vec3(0.045, 0.072, 0.082) * (0.85 + blot * 0.4);
-  float clear = smoothstep(0.0, 0.62, local);
+  // The opacifier: one even veil that thins out, rather than a noise map
+  // fading. What unevenness there is rides the same broad blot as the
+  // timing, so the two agree, and it is a soft-light touch rather than a
+  // hole in the dark.
+  vec3 veil = vec3(0.045, 0.07, 0.08);
+  float clear = smoothstep(0.0, 0.7, local);
+  clear = clear * clear * (3.0 - 2.0 * clear);
   vec3 c = mix(veil, dye, clear);
+  c *= 1.0 + (blot - 0.5) * 0.12 * mid * clear;
 
-  // Grain, heavier while the image is coming up; a colour mottle that fades.
+  // Grain, heavier while the image is coming up.
   float g = hash(floor(st * 820.0)) - 0.5;
-  c += g * (0.012 + 0.05 * mid);
-  float mottle = (fbm(st * 9.0 + 2.0) - 0.5) * 0.07 * mid;
-  c += vec3(mottle, 0.0, -mottle);
+  c += g * (0.01 + 0.035 * mid);
+
+  // The print's own look, which stays: blacks that never quite reach black,
+  // shadows that lean cool and highlights that lean warm, a little less
+  // saturation than the file, and a soft fall-off at the corners.
+  float l = dot(c, vec3(0.299, 0.587, 0.114));
+  c = mix(vec3(l), c, 0.9);
+  c = c * 0.93 + 0.04;
+  c += (l - 0.5) * vec3(0.03, 0.01, -0.035);
+  vec2 q = st - 0.5;
+  c *= 1.0 - dot(q, q) * 0.16;
   return c;
 }
 
