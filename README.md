@@ -161,18 +161,18 @@ Two things in it worth knowing:
   with the colour. Eight seconds, for a process that really takes fifteen
   minutes. Tunables are at the top of `lib/polaroid.ts`.
 
-The picture is `public/about/portrait.jpg`, cropped to the square window
-whatever its shape. What is there now is a drawn placeholder —
-`node scripts/about-placeholder.mjs` regenerates it — chosen for having deep
-shadow, a bright sky and both warm and cool colour, which is what the
-development needs to show itself. Drop a real photo over it.
+The picture is `public/about/portrait.jpg`: a 1400px square cut from the
+original, which is what the window shows and all a ~300px print needs. Keep
+originals out of `public/` — everything there is published, and a camera
+export runs to megabytes. `scripts/about-placeholder.mjs` draws the stand-in
+that was there before, if one is ever needed again.
 
 ## Still placeholder
 
 - **Copy.** Five of six projects have placeholder overview text and collaborator
   names. Google Pixel has real copy.
-- **About page.** The layout, the Polaroid and the role line are real; the copy
-  and the photo in `lib/about.ts` and `public/about/` are not.
+- **About page.** The layout, the Polaroid, the photo and the role line are
+  real; the copy in `lib/about.ts` is not.
 - **Device frames in the Google footage.** The design draws no bezel — the
   viewer is a rounded rectangle holding the picture and nothing else. Six of the
   Pixel and gesture clips were exported with a phone body rendered onto white,

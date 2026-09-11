@@ -9,7 +9,7 @@
 export const about = {
   /** Under `public/`. Cropped to the print's square window, so any shape works. */
   photo: "/about/portrait.jpg",
-  alt: "A photo of Remington",
+  alt: "Remington and family walking across a footbridge over a river, in evening light",
   /** What is written on the back of the print. First line is set as a label. */
   back: ["Remington", "San Francisco", "Summer, 2025"],
   lead:
