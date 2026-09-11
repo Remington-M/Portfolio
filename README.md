@@ -130,12 +130,49 @@ Two things to know when adding a clip:
 H.264 MP4 is the baseline; add a VP9 `srcWebm` alongside it for smaller files
 where you can.
 
+## The About page's Polaroid
+
+`components/about/Polaroid.tsx` draws the print as a **mesh**, not a rectangle:
+a 40×48 grid in plain WebGL 1, with no library behind it. The reason is that
+the print has to flex — a twist as it turns over, a bend as it lands — and CSS
+3D can only rotate a flat plane. Slicing a card into strips to fake curvature
+leaves seams; three.js for one bent quad would be the second animation engine
+this README rules out. WebGL 1 has shipped in every browser we target since
+2014, and where it is missing or the context is lost the same button becomes a
+flat CSS flip of the same two faces, with the development approximated in
+filters. Screen readers get the picture's alt text and the caption either way.
+
+Two things in it worth knowing:
+
+- **The turn is two springs.** A tap flicks the print over from its bottom
+  edge, so the top edge leads and the bottom lags; each row of the mesh is
+  rotated by a blend of the two, and the difference is the twist. Both settle
+  at a half turn, so the twist unwinds as the print comes to rest. Curvature
+  is a third spring, kicked by the tap and by the landing, that always springs
+  back to flat. The springs are the repo's own integrator, and the frame loop
+  stops when they do.
+- **The development follows the chemistry.** Integral film starts under a dark
+  opacifier that clears as the reagent's alkalinity drops; underneath, the
+  dyes migrate up at different rates — cyan first, then magenta, then yellow —
+  so the first ghost is a cold monochrome that warms last. The reagent spreads
+  from the pod in the wide border, so the bottom runs a little ahead of the
+  top, and it spreads unevenly, so it comes up in blotches. Density builds as
+  a power of the final value, the way dye accumulates, so contrast arrives
+  with the colour. Eight seconds, for a process that really takes fifteen
+  minutes. Tunables are at the top of `lib/polaroid.ts`.
+
+The picture is `public/about/portrait.jpg`, cropped to the square window
+whatever its shape. What is there now is a drawn placeholder —
+`node scripts/about-placeholder.mjs` regenerates it — chosen for having deep
+shadow, a bright sky and both warm and cool colour, which is what the
+development needs to show itself. Drop a real photo over it.
+
 ## Still placeholder
 
 - **Copy.** Five of six projects have placeholder overview text and collaborator
   names. Google Pixel has real copy.
-- **About page.** Does not exist yet. It's where the role line belongs, which is
-  why no project page carries a role field.
+- **About page.** The layout, the Polaroid and the role line are real; the copy
+  and the photo in `lib/about.ts` and `public/about/` are not.
 - **Device frames in the Google footage.** The design draws no bezel — the
   viewer is a rounded rectangle holding the picture and nothing else. Six of the
   Pixel and gesture clips were exported with a phone body rendered onto white,

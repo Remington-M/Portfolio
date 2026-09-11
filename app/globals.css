@@ -304,3 +304,120 @@ a:hover {
   white-space: nowrap;
   border: 0;
 }
+
+/* ------------------------------------------------------------------ *
+ * The Polaroid, without WebGL
+ *
+ * The canvas draws the print as a bent sheet. Where there is no WebGL — or
+ * the context is lost — the same button turns into a flat CSS flip of the
+ * same two faces, and the development becomes a filter ramp. Less, but the
+ * page is complete without the shader. In GL mode `.polaroid-faces` is
+ * hidden and only the screen-reader text is live.
+ * ------------------------------------------------------------------ */
+.polaroid-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.polaroid-faces {
+  display: none;
+}
+.polaroid-css .polaroid-faces {
+  display: block;
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transition: transform 900ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.polaroid-css[data-flipped] .polaroid-faces {
+  transform: rotateY(180deg);
+}
+.polaroid-face {
+  position: absolute;
+  inset: 0;
+  border-radius: 1.6%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  box-shadow: 0 30px 58px -22px rgb(var(--shadow-cast) / calc(0.5 * var(--shadow-a)));
+}
+.polaroid-front {
+  background: #f7f5f2;
+}
+.polaroid-back {
+  background: #1b1a18;
+  color: rgba(226, 220, 208, 0.82);
+  transform: rotateY(180deg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6em;
+  padding: 12% 10%;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  line-height: 1.6;
+  text-align: left;
+}
+.polaroid-back > span:first-child {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 500;
+}
+.polaroid-window {
+  position: absolute;
+  left: 5.11%;
+  right: 5.11%;
+  top: 5.6%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  background: #0b1215;
+}
+.polaroid-window img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  animation: polaroid-develop 8s cubic-bezier(0.4, 0, 0.6, 1) 0.6s both;
+}
+.polaroid-veil {
+  position: absolute;
+  inset: 0;
+  background: #0b1215;
+  animation: polaroid-clear 6s cubic-bezier(0.5, 0, 0.7, 1) 0.6s both;
+}
+@keyframes polaroid-develop {
+  0% {
+    filter: brightness(1.6) contrast(0.3) saturate(0) sepia(0.4) hue-rotate(160deg);
+  }
+  45% {
+    filter: brightness(1.15) contrast(0.7) saturate(0.55) sepia(0.2) hue-rotate(120deg);
+  }
+  75% {
+    filter: brightness(1.04) contrast(0.9) saturate(0.85) sepia(0.1) hue-rotate(20deg);
+  }
+  100% {
+    filter: none;
+  }
+}
+@keyframes polaroid-clear {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .polaroid-css .polaroid-faces {
+    transition-duration: 250ms;
+  }
+  .polaroid-window img,
+  .polaroid-veil {
+    animation: none;
+  }
+  .polaroid-veil {
+    opacity: 0;
+  }
+}

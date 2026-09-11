@@ -1752,12 +1752,15 @@ export default function MediaLayer() {
 
   return (
     <div
-      aria-hidden={mode === "case"}
+      aria-hidden={mode !== "home"}
       style={{
         position: "fixed",
         inset: 0,
         zIndex: 40,
         pointerEvents: "none",
+        // The About page has no deck. The layer stays mounted — it is what
+        // keeps the deck's state alive for the trip back — but draws nothing.
+        display: mode === "about" ? "none" : undefined,
         // No transform here: a transformed ancestor becomes the containing block
         // for descendants and silently breaks position: sticky further down.
       }}

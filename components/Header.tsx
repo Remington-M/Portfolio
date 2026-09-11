@@ -8,7 +8,7 @@ export default function Header({
   variant,
   kicker,
 }: {
-  variant: "home" | "case";
+  variant: "home" | "case" | "about";
   kicker?: string;
 }) {
   const { mobile, stage } = useStage();
@@ -80,8 +80,20 @@ export default function Header({
           gap: (mobile ? 16 : 26) * ts,
         }}
       >
-        <span style={{ color: "var(--ink)" }}>Work</span>
-        <span style={{ color: "var(--ink-3)" }}>About</span>
+        <Link
+          href="/"
+          style={{ color: variant === "home" ? "var(--ink)" : "var(--ink-3)" }}
+          aria-current={variant === "home" ? "page" : undefined}
+        >
+          Work
+        </Link>
+        <Link
+          href="/about"
+          style={{ color: variant === "about" ? "var(--ink)" : "var(--ink-3)" }}
+          aria-current={variant === "about" ? "page" : undefined}
+        >
+          About
+        </Link>
       </nav>
     </header>
   );

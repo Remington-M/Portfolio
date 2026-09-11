@@ -52,7 +52,7 @@ export type StageState = {
   vh: MotionValue<number>;
 
   /** Route-level state. Changes rarely, so plain React state is right here. */
-  mode: "home" | "case";
+  mode: "home" | "case" | "about";
   mobile: boolean;
   stage: Stage;
   /** Bumped whenever the route changes, to retarget the springs. */
@@ -137,7 +137,15 @@ export function StageProvider({ children }: { children: ReactNode }) {
    * all. Trimmed once, here, so neither reader has to know.
    */
   const route = (pathname ?? "").replace(/\/+$/, "") || "/";
-  const mode: "home" | "case" = route.startsWith("/work/") ? "case" : "home";
+  /**
+   * The About page has no cards on it at all. It gets its own mode rather
+   * than riding "home", because home is what draws the deck.
+   */
+  const mode: "home" | "case" | "about" = route.startsWith("/work/")
+    ? "case"
+    : route === "/about"
+      ? "about"
+      : "home";
 
   const [viewport, setViewport] = useState({ w: 0, h: 0, mobile: false });
   const [transitionKey, setTransitionKey] = useState(0);
