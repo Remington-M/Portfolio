@@ -46,6 +46,12 @@ export const PRINT = {
   },
   /** Corner radius, in card widths. The real thing is barely rounded. */
   radius: 1.4 / 88,
+  /**
+   * Thickness, in card widths. Real integral film is about 0.4mm, which at
+   * this size is under a pixel; this is nearer 1.2mm, enough to see the edge
+   * as the print turns, which is what makes it a thing and not a picture.
+   */
+  thickness: 1.2 / 88,
   /** Distance from the camera to the table, in card widths. */
   camera: 3.6,
   /** Room the canvas keeps around the card for the swing, as multiples. */
@@ -146,6 +152,53 @@ export function buildMesh(cols: number, rows: number) {
   return { uv, index };
 }
 
+/**
+ * The edge of the print: a strip of quads around the rounded outline, each
+ * vertex carrying the uv it sits at on the sheet, which face of the sheet it
+ * belongs to (-0.5 or 0.5), and the outward direction in the sheet's plane.
+ * The vertex shader places it on the deformed sheet, so the edge bends and
+ * twists with the faces it joins.
+ */
+export function buildWalls(radius: number, w: number, h: number) {
+  const pts: { x: number; y: number; nx: number; ny: number }[] = [];
+  const hw = w / 2, hh = h / 2, r = radius;
+  const arc = 5;
+  // Corners, anticlockwise from the top-right.
+  const corners = [
+    { cx: hw - r, cy: hh - r, a0: 0 },
+    { cx: -hw + r, cy: hh - r, a0: Math.PI / 2 },
+    { cx: -hw + r, cy: -hh + r, a0: Math.PI },
+    { cx: hw - r, cy: -hh + r, a0: (3 * Math.PI) / 2 },
+  ];
+  for (const c of corners) {
+    for (let i = 0; i <= arc; i++) {
+      const a = c.a0 + (i / arc) * (Math.PI / 2);
+      pts.push({ x: c.cx + Math.cos(a) * r, y: c.cy + Math.sin(a) * r, nx: Math.cos(a), ny: Math.sin(a) });
+    }
+  }
+  const n = pts.length;
+  // u, v, h, dx, dy — two vertices per point.
+  const data = new Float32Array(n * 2 * 5);
+  let k = 0;
+  for (const p of pts) {
+    for (const side of [-0.5, 0.5]) {
+      data[k++] = p.x / w + 0.5;
+      data[k++] = p.y / h + 0.5;
+      data[k++] = side;
+      data[k++] = p.nx;
+      data[k++] = p.ny;
+    }
+  }
+  const index = new Uint16Array(n * 6);
+  k = 0;
+  for (let i = 0; i < n; i++) {
+    const a = i * 2, b = ((i + 1) % n) * 2;
+    index[k++] = a; index[k++] = b; index[k++] = a + 1;
+    index[k++] = b; index[k++] = b + 1; index[k++] = a + 1;
+  }
+  return { data, index };
+}
+
 /* ------------------------------------------------------------------ *
  * Shaders
  * ------------------------------------------------------------------ */
@@ -164,6 +217,8 @@ export function buildMesh(cols: number, rows: number) {
  */
 export const VERT = /* glsl */ `
 attribute vec2 aUV;
+attribute float aH;
+attribute vec2 aDir;
 
 uniform vec2 uCard;
 uniform float uAngleTop;
@@ -178,6 +233,8 @@ uniform float uCamera;
 uniform vec2 uProj;
 uniform float uShadow;
 uniform vec3 uShadowOffset;
+uniform float uThick;
+uniform float uWall;
 
 varying vec2 vUV;
 varying vec3 vNormal;
@@ -209,7 +266,11 @@ void main() {
   float e = 0.004;
   vec3 du = surf(aUV + vec2(e, 0.0)) - p;
   vec3 dv = surf(aUV + vec2(0.0, e)) - p;
-  vNormal = normalize(cross(du, dv));
+  vec3 n = normalize(cross(du, dv));
+  // Thickness: each face sits half the thickness off the sheet along its
+  // normal, and the edge strip spans between them.
+  p += n * aH * uThick;
+  vNormal = uWall > 0.5 ? normalize(du * aDir.x + dv * aDir.y) : n;
   vUV = aUV;
   vPos = p;
   float w = uCamera - p.z;
@@ -254,6 +315,7 @@ uniform vec2 uFit;
 uniform float uRadius;
 uniform float uDevelop;
 uniform float uShadow;
+uniform float uWall;
 uniform float uShadowAlpha;
 uniform float uShadowSoft;
 uniform vec3 uShadowColor;
@@ -325,11 +387,13 @@ void main() {
     return;
   }
 
-  float edge = 1.0 - smoothstep(-0.006, 0.0, d);
+  float edge = uWall > 0.5 ? 1.0 : 1.0 - smoothstep(-0.004, 0.0, d);
   if (edge <= 0.0) discard;
 
   vec3 n = normalize(vNormal);
-  if (!gl_FrontFacing) n = -n;
+  // The faces are drawn one side at a time; the edge strip has its own
+  // outward normal and is seen from both sides.
+  if (uWall < 0.5 && !gl_FrontFacing) n = -n;
   vec3 v = normalize(uCamPos - vPos);
   vec3 l = normalize(vec3(-0.45, 0.7, 0.9));
   vec3 h = normalize(l + v);
@@ -340,7 +404,12 @@ void main() {
   vec3 base;
   float shine;
   float gloss;
-  if (gl_FrontFacing) {
+  if (uWall > 0.5) {
+    // The cut edge of the white plastic sheet, a touch greyer than the face.
+    base = uPaper * 0.9;
+    shine = 0.08;
+    gloss = 10.0;
+  } else if (gl_FrontFacing) {
     vec2 w0 = uWindow.xy, w1 = uWindow.zw;
     vec2 st = (vUV - w0) / (w1 - w0);
     bool inside = st.x > 0.0 && st.x < 1.0 && st.y > 0.0 && st.y < 1.0;

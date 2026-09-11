@@ -11,6 +11,7 @@ import {
   PRINT,
   VERT,
   buildMesh,
+  buildWalls,
 } from "@/lib/polaroid";
 import {
   clamp,
@@ -50,6 +51,8 @@ export default function Polaroid({ src, alt, back, width }: Props) {
   const reduced = useReducedMotion() ?? false;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [flipped, setFlipped] = useState(false);
+  /** Half turns so far, for the CSS fallback's own rotation. */
+  const [turns, setTurns] = useState(0);
   /**
    * `pending` until the canvas has been tried, so the fallback is not shown
    * for a frame under a canvas that is about to work.
@@ -76,10 +79,17 @@ export default function Polaroid({ src, alt, back, width }: Props) {
     controls.current?.resize();
   }, [width]);
 
+  /**
+   * Every tap adds another half turn in the same direction, so a print
+   * turned to its back comes round the rest of the way rather than turning
+   * back the way it came.
+   */
   const toggle = useCallback(() => {
-    const to = flipTarget.current > 0 ? 0 : Math.PI;
+    const to = flipTarget.current + Math.PI;
     flipTarget.current = to;
-    setFlipped(to > 0);
+    const n = Math.round(to / Math.PI);
+    setFlipped(n % 2 === 1);
+    setTurns(n);
     controls.current?.flip(to);
   }, []);
 
@@ -111,10 +121,39 @@ export default function Polaroid({ src, alt, back, width }: Props) {
     const ibo = gl.createBuffer();
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, mesh.index, gl.STATIC_DRAW);
+    const walls = buildWalls(PRINT.radius, PRINT.w, PRINT.h);
+    const wvbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, wvbo);
+    gl.bufferData(gl.ARRAY_BUFFER, walls.data, gl.STATIC_DRAW);
+    const wibo = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, wibo);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, walls.index, gl.STATIC_DRAW);
     gl.useProgram(program);
     const aUV = gl.getAttribLocation(program, "aUV");
-    gl.enableVertexAttribArray(aUV);
-    gl.vertexAttribPointer(aUV, 2, gl.FLOAT, false, 0, 0);
+    const aH = gl.getAttribLocation(program, "aH");
+    const aDir = gl.getAttribLocation(program, "aDir");
+
+    /** Bind the sheet, with its face offset as a constant attribute. */
+    const useSheet = (h: number) => {
+      gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+      gl.enableVertexAttribArray(aUV);
+      gl.vertexAttribPointer(aUV, 2, gl.FLOAT, false, 0, 0);
+      gl.disableVertexAttribArray(aH);
+      gl.vertexAttrib1f(aH, h);
+      gl.disableVertexAttribArray(aDir);
+      gl.vertexAttrib2f(aDir, 0, 0);
+    };
+    const useWalls = () => {
+      gl.bindBuffer(gl.ARRAY_BUFFER, wvbo);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, wibo);
+      gl.enableVertexAttribArray(aUV);
+      gl.vertexAttribPointer(aUV, 2, gl.FLOAT, false, 20, 0);
+      gl.enableVertexAttribArray(aH);
+      gl.vertexAttribPointer(aH, 1, gl.FLOAT, false, 20, 8);
+      gl.enableVertexAttribArray(aDir);
+      gl.vertexAttribPointer(aDir, 2, gl.FLOAT, false, 20, 12);
+    };
 
     const u = (name: string) => gl.getUniformLocation(program, name);
     const U = {
@@ -131,6 +170,8 @@ export default function Polaroid({ src, alt, back, width }: Props) {
       proj: u("uProj"),
       shadow: u("uShadow"),
       shadowOffset: u("uShadowOffset"),
+      thick: u("uThick"),
+      wall: u("uWall"),
       photo: u("uPhoto"),
       back: u("uBack"),
       window: u("uWindow"),
@@ -155,6 +196,7 @@ export default function Polaroid({ src, alt, back, width }: Props) {
       PRINT.window.y1,
     );
     gl.uniform1f(U.radius, PRINT.radius);
+    gl.uniform1f(U.thick, PRINT.thickness);
     gl.uniform3f(U.paper, 0.968, 0.962, 0.948);
     gl.uniform1i(U.photo, 0);
     gl.uniform1i(U.back, 1);
@@ -212,7 +254,13 @@ export default function Polaroid({ src, alt, back, width }: Props) {
     /* ---------------- sizing ---------------- */
     let dpr = 1;
     const size = () => {
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      /**
+       * Drawn at one and a half times the display's own density, up to three
+       * pixels per CSS pixel, and scaled down by the browser. MSAA covers the
+       * outline; the extra resolution is for the edge strip and the texture
+       * detail through a turn, which are where a bare 2x showed its pixels.
+       */
+      dpr = Math.min((window.devicePixelRatio || 1) * 1.5, 3);
       const { width, canvasW, canvasH } = dims.current;
       const w = Math.round(canvasW * dpr);
       const h = Math.round(canvasH * dpr);
@@ -230,7 +278,7 @@ export default function Polaroid({ src, alt, back, width }: Props) {
     controls.current = {
       flip: (to) => {
         target.flip = to;
-        if (!reduced) kickSpring(S.flexX, M.flexKick.turn * (to > 0 ? 1 : -1));
+        if (!reduced) kickSpring(S.flexX, M.flexKick.turn);
         wake();
       },
       tilt: (x, y) => {
@@ -295,7 +343,7 @@ export default function Polaroid({ src, alt, back, width }: Props) {
       }
 
       const mean = (S.top.value + S.bottom.value) / 2;
-      const lift = Math.sin(clamp(mean, 0, Math.PI)) * M.lift;
+      const lift = Math.abs(Math.sin(mean)) * M.lift;
       const bendX = S.flexX.value * 0.1;
       const bendY = S.flexY.value * 0.1;
 
@@ -318,6 +366,9 @@ export default function Polaroid({ src, alt, back, width }: Props) {
       // softer and fainter the further the card is from the table.
       const height = lift + Math.max(0, S.y.value) * 0.3 + (S.scale.value - 1);
       gl.disable(gl.DEPTH_TEST);
+      gl.disable(gl.CULL_FACE);
+      gl.uniform1f(U.wall, 0);
+      useSheet(0);
       gl.uniform1f(U.shadow, 1);
       gl.uniform3f(U.shadowOffset, 0.01 + height * 0.05, -0.028 - height * 0.12, -0.02);
       gl.uniform1f(U.shadowAlpha, clamp(0.3 - height * 0.24, 0.06, 0.3) * shadowGain);
@@ -326,7 +377,19 @@ export default function Polaroid({ src, alt, back, width }: Props) {
 
       gl.enable(gl.DEPTH_TEST);
       gl.uniform1f(U.shadow, 0);
+      // The two faces, each drawn one-sided, half the thickness apart; then
+      // the edge between them.
+      gl.enable(gl.CULL_FACE);
+      gl.cullFace(gl.BACK);
+      useSheet(0.5);
       gl.drawElements(gl.TRIANGLES, mesh.index.length, gl.UNSIGNED_SHORT, 0);
+      gl.cullFace(gl.FRONT);
+      useSheet(-0.5);
+      gl.drawElements(gl.TRIANGLES, mesh.index.length, gl.UNSIGNED_SHORT, 0);
+      gl.disable(gl.CULL_FACE);
+      gl.uniform1f(U.wall, 1);
+      useWalls();
+      gl.drawElements(gl.TRIANGLES, walls.index.length, gl.UNSIGNED_SHORT, 0);
 
       const moving =
         !isAtRest(S.top, target.flip) ||
@@ -375,6 +438,8 @@ export default function Polaroid({ src, alt, back, width }: Props) {
       gl.deleteTexture(backTex);
       gl.deleteBuffer(vbo);
       gl.deleteBuffer(ibo);
+      gl.deleteBuffer(wvbo);
+      gl.deleteBuffer(wibo);
       gl.deleteProgram(program);
     };
     // Size is read live from `dims`; only the content and motion preference
@@ -437,7 +502,6 @@ export default function Polaroid({ src, alt, back, width }: Props) {
         aria-label={label}
         aria-pressed={flipped}
         className={mode === "css" ? "polaroid-css" : undefined}
-        data-flipped={flipped ? "" : undefined}
         style={{
           position: "absolute",
           inset: 0,
@@ -458,7 +522,11 @@ export default function Polaroid({ src, alt, back, width }: Props) {
             : null),
         }}
       >
-        <span className="polaroid-faces" aria-hidden={mode !== "css"}>
+        <span
+          className="polaroid-faces"
+          aria-hidden={mode !== "css"}
+          style={{ transform: mode === "css" ? `rotateY(${turns * 180}deg)` : undefined }}
+        >
           <span className="polaroid-face polaroid-front">
             <span className="polaroid-window">
               {/* eslint-disable-next-line @next/next/no-img-element */}
