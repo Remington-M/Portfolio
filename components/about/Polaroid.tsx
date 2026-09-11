@@ -31,6 +31,11 @@ type Props = {
   back: readonly string[];
   /** Card width in CSS pixels. Height follows the print's proportions. */
   width: number;
+  /**
+   * Resting lean, in degrees. A print put down on a table is never quite
+   * square to it; this is where the roll spring settles.
+   */
+  lean?: number;
 };
 
 /**
@@ -47,7 +52,7 @@ type Props = {
  * or the context is lost the same button becomes a flat CSS flip of the same
  * two faces, with the development approximated in CSS filters.
  */
-export default function Polaroid({ src, alt, back, width }: Props) {
+export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
   const reduced = useReducedMotion() ?? false;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [flipped, setFlipped] = useState(false);
@@ -249,6 +254,7 @@ export default function Polaroid({ src, alt, back, width }: Props) {
     });
 
     /* ---------------- springs ---------------- */
+    const restRoll = (lean * Math.PI) / 180;
     const S = {
       top: spring(0),
       bottom: spring(0),
@@ -258,7 +264,7 @@ export default function Polaroid({ src, alt, back, width }: Props) {
       tiltY: spring(0),
       y: spring(reduced ? 0 : M.entry.fromY),
       scale: spring(reduced ? 1 : M.entry.fromScale),
-      roll: spring(reduced ? 0 : M.entry.fromRoll),
+      roll: spring(reduced ? restRoll : M.entry.fromRoll),
     };
     const target = { flip: flipTarget.current, tiltX: 0, tiltY: 0 };
     let landedAt: number | null = reduced ? performance.now() : null;
@@ -339,7 +345,7 @@ export default function Polaroid({ src, alt, back, width }: Props) {
       stepSpring(S.tiltY, target.tiltY, dt, M.tilt, REST.unit);
       stepSpring(S.y, 0, dt, M.entry.y, REST.unit);
       stepSpring(S.scale, 1, dt, M.entry.scale, REST.unit);
-      stepSpring(S.roll, 0, dt, M.entry.roll, REST.unit);
+      stepSpring(S.roll, restRoll, dt, M.entry.roll, REST.unit);
 
       // The landing: once the drop is nearly over, flex the sheet and start
       // the clock on the chemistry.
@@ -419,7 +425,7 @@ export default function Polaroid({ src, alt, back, width }: Props) {
         !isAtRest(S.tiltY, target.tiltY) ||
         !isAtRest(S.y, 0) ||
         !isAtRest(S.scale, 1) ||
-        !isAtRest(S.roll, 0) ||
+        !isAtRest(S.roll, restRoll) ||
         (landedAt !== null && develop < 1) ||
         !backDrawn;
       raf = moving ? requestAnimationFrame(draw) : 0;
@@ -464,7 +470,7 @@ export default function Polaroid({ src, alt, back, width }: Props) {
     // Size is read live from `dims`; only the content and motion preference
     // rebuild the scene.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src, back, reduced]);
+  }, [src, back, reduced, lean]);
 
   /* ---------------- pointer ---------------- */
   const onMove = useCallback(
@@ -544,7 +550,10 @@ export default function Polaroid({ src, alt, back, width }: Props) {
         <span
           className="polaroid-faces"
           aria-hidden={mode !== "css"}
-          style={{ transform: mode === "css" ? `rotateY(${turns * 180}deg)` : undefined }}
+          style={{
+            transform:
+              mode === "css" ? `rotate(${lean}deg) rotateY(${turns * 180}deg)` : undefined,
+          }}
         >
           <span className="polaroid-face polaroid-front">
             <span className="polaroid-window">

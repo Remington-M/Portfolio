@@ -50,6 +50,13 @@ export const TYPE = {
   titleS: { size: 20, line: 1.1, weight: 400, track: "-0.02em" },
   /** Case study overview. Held to `CASE.intro.colWidth`, about 55 characters. */
   body: { size: 18, line: 1.55, weight: 400, track: "0" },
+  /**
+   * The About page. It has no headline — the first sentence is set a step
+   * up from the body and does that job — and its column is narrower than a
+   * case overview's, so the body steps down to match.
+   */
+  aboutLead: { size: 20, line: 1.45, weight: 400, track: "-0.01em" },
+  bodyS: { size: 16, line: 1.55, weight: 400, track: "0" },
   /** The name in the nav, and the only sans 500 on the site. */
   navName: { size: 15, line: 1, weight: 500, track: "-0.01em" },
 
