@@ -353,19 +353,34 @@ vec3 develop(vec3 target, vec2 st, float t) {
   // kept broad and shallow — the earlier version let a fractal noise map
   // decide the timing, and the picture came up as blotches rather than as
   // a picture.
+  // Timing follows the picture, not a noise map. Dye builds fastest where
+  // there is most of it — the shadows — so the dark parts of the image come
+  // out of the dark first and the highlights are the last to clear. A slight
+  // lead at the pod end and a very broad, shallow unevenness sit under that.
+  // Two clocks. The dye's runs ahead in the shadows, so the dark parts of
+  // the picture are formed first; the opacifier's is nearly even, with a
+  // small lead at the pod end. Tying the veil itself to the tones was tried
+  // and reads as a negative: it uncovers the shadows while the dye there is
+  // still thin and light.
+  float tl = dot(target, vec3(0.299, 0.587, 0.114));
   float blot = fbm(st * 2.2);
-  float delay = st.y * 0.12 + (blot - 0.5) * 0.08;
-  float local = clamp((t - delay) / 0.82, 0.0, 1.0);
+  float lead = st.y * 0.05 + (blot - 0.5) * 0.03;
+  float local = clamp((t - tl * 0.22 - lead) / 0.74, 0.0, 1.0);
+  float localV = clamp((t - lead - (1.0 - tl) * 0.05) / 0.8, 0.0, 1.0);
 
-  float aC = smoothstep(0.04, 0.72, local);
-  float aM = smoothstep(0.17, 0.86, local);
-  float aY = smoothstep(0.30, 1.00, local);
+  // The three dyes, close together. Staggered too far apart the shadows
+  // come up bright cyan before the other two darken them, which reads as
+  // a negative; kept this close, the early image is a cool monochrome that
+  // warms, which is the real thing.
+  float aC = smoothstep(0.02, 0.75, local);
+  float aM = smoothstep(0.10, 0.85, local);
+  float aY = smoothstep(0.18, 0.95, local);
   vec3 dye = vec3(pow(target.r, aC), pow(target.g, aM), pow(target.b, aY));
 
   // The muddy middle: low contrast, a little desaturated, warm-grey haze.
   float mid = 1.0 - local;
   float lum = dot(dye, vec3(0.299, 0.587, 0.114));
-  dye = mix(dye, vec3(lum), mid * 0.3);
+  dye = mix(dye, vec3(lum), mid * 0.45);
   dye = mix(dye, vec3(0.64, 0.60, 0.54), mid * 0.2);
 
   // The opacifier: one even veil that thins out, rather than a noise map
@@ -373,7 +388,7 @@ vec3 develop(vec3 target, vec2 st, float t) {
   // timing, so the two agree, and it is a soft-light touch rather than a
   // hole in the dark.
   vec3 veil = vec3(0.045, 0.07, 0.08);
-  float clear = smoothstep(0.0, 0.7, local);
+  float clear = smoothstep(0.0, 0.7, localV);
   clear = clear * clear * (3.0 - 2.0 * clear);
   vec3 c = mix(veil, dye, clear);
   c *= 1.0 + (blot - 0.5) * 0.12 * mid * clear;
