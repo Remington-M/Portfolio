@@ -101,8 +101,30 @@ export const POLAROID_MOTION = {
     fromScale: 1.14,
     fromRoll: -0.14,
   },
+  /**
+   * A resting curl at the bottom-right corner, in card widths of lift at
+   * the corner itself. Prints never lie quite flat; this is the one that
+   * says so, and it is what the shadow separates from.
+   */
+  curl: 0.05,
   /** Reduced motion: one critically damped spring, no twist, no flex. */
   reduced: springConfig(160, 1),
+} as const;
+
+/* ------------------------------------------------------------------ *
+ * Shadow
+ *
+ * Two layers, both cast by the sheet itself: every vertex is dropped onto
+ * the table along a light direction by its own height, so a lifted corner's
+ * shadow moves away from it and goes soft, and a print turning in the air
+ * throws a shadow that slides and spreads. The contact layer is tight and
+ * dense, the ambient one wide and faint — the way a real shadow has a dark
+ * core under the object and a broad fall-off around it.
+ * ------------------------------------------------------------------ */
+export const SHADOW = {
+  /** `offset` is the throw at rest, in card widths: light from the upper left. */
+  contact: { slope: [0.18, -0.32], offset: [0.006, -0.012], soft: 0.03, spread: 0.55, alpha: 0.3 },
+  ambient: { slope: [0.3, -0.55], offset: [0.02, -0.04], soft: 0.12, spread: 1.4, alpha: 0.16 },
 } as const;
 
 /* ------------------------------------------------------------------ *
@@ -113,7 +135,7 @@ export const POLAROID_MOTION = {
  * the same sequence in eight seconds.
  * ------------------------------------------------------------------ */
 export const DEVELOP = {
-  delay: 0.55,
+  delay: 0.2,
   duration: 8,
 } as const;
 
@@ -240,16 +262,23 @@ uniform float uShadow;
 uniform vec3 uShadowOffset;
 uniform float uThick;
 uniform float uWall;
+uniform float uCurl;
+uniform vec2 uShadowSlope;
 
 varying vec2 vUV;
 varying vec3 vNormal;
 varying vec3 vPos;
+varying float vHeight;
 
 vec3 surf(vec2 uv) {
   vec2 p = (uv - 0.5) * uCard;
   // Curvature about each axis, centred so bending never lifts the middle.
   float z = uBendX * (p.x * p.x - uCard.x * uCard.x / 12.0)
           + uBendY * (p.y * p.y - uCard.y * uCard.y / 12.0);
+  // The resting curl: the bottom-right corner comes up off the table, the
+  // lift growing as a cube of the distance in from the opposite diagonal.
+  float c = max(0.0, (uv.x - 0.35) + (0.65 - uv.y));
+  z += uCurl * c * c * c;
   // The twist: a rotation about Y whose angle depends on the row.
   float a = mix(uAngleBottom, uAngleTop, uv.y);
   float ca = cos(a), sa = sin(a);
@@ -266,6 +295,11 @@ vec3 surf(vec2 uv) {
   return q;
 }
 
+/** Drop a point onto the table along the light. */
+vec3 dropOnTable(vec3 q) {
+  return vec3(q.xy + max(q.z, 0.0) * uShadowSlope, -0.05);
+}
+
 void main() {
   vec3 p = surf(aUV);
   float e = 0.004;
@@ -277,6 +311,8 @@ void main() {
   p += n * aH * uThick;
   vNormal = uWall > 0.5 ? normalize(du * aDir.x + dv * aDir.y) : n;
   vUV = aUV;
+  vHeight = max(p.z, 0.0);
+  if (uShadow > 0.5) p = dropOnTable(p);
   vPos = p;
   float w = uCamera - p.z;
   gl_Position = vec4(p.xy * uProj * uCamera, (w - uCamera) * 0.2 * w, w);
@@ -323,6 +359,7 @@ uniform float uShadow;
 uniform float uWall;
 uniform float uShadowAlpha;
 uniform float uShadowSoft;
+uniform float uShadowSpread;
 uniform vec3 uShadowColor;
 uniform vec3 uPaper;
 uniform vec3 uCamPos;
@@ -330,6 +367,7 @@ uniform vec3 uCamPos;
 varying vec2 vUV;
 varying vec3 vNormal;
 varying vec3 vPos;
+varying float vHeight;
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -366,7 +404,7 @@ vec3 develop(vec3 target, vec2 st, float t) {
   float blot = fbm(st * 2.2);
   float lead = st.y * 0.05 + (blot - 0.5) * 0.03;
   float local = clamp((t - tl * 0.22 - lead) / 0.74, 0.0, 1.0);
-  float localV = clamp((t - lead - (1.0 - tl) * 0.05) / 0.8, 0.0, 1.0);
+  float localV = clamp((t - lead - (1.0 - tl) * 0.05) / 0.62, 0.0, 1.0);
 
   // The three dyes, close together. Staggered too far apart the shadows
   // come up bright cyan before the other two darken them, which reads as
@@ -388,8 +426,10 @@ vec3 develop(vec3 target, vec2 st, float t) {
   // timing, so the two agree, and it is a soft-light touch rather than a
   // hole in the dark.
   vec3 veil = vec3(0.045, 0.07, 0.08);
-  float clear = smoothstep(0.0, 0.7, localV);
-  clear = clear * clear * (3.0 - 2.0 * clear);
+  // Starts lifting at once — it sat black too long when it eased in — and
+  // eases only at the end.
+  float clear = smoothstep(0.0, 0.55, localV);
+  clear = 1.0 - (1.0 - clear) * (1.0 - clear);
   vec3 c = mix(veil, dye, clear);
   c *= 1.0 + (blot - 0.5) * 0.12 * mid * clear;
 
@@ -414,7 +454,11 @@ void main() {
   float d = roundedBox(p, uCard * 0.5, uRadius);
 
   if (uShadow > 0.5) {
-    float a = 1.0 - smoothstep(-uShadowSoft, 0.005, d);
+    // The penumbra widens with height above the table, and the fall-off is
+    // squared so the edge trails away rather than stopping.
+    float soft = uShadowSoft + vHeight * uShadowSpread;
+    float a = 1.0 - smoothstep(-soft, 0.004, d);
+    a = a * a * (0.6 + 0.4 * a);
     a *= uShadowAlpha;
     gl_FragColor = vec4(uShadowColor * a, a);
     return;

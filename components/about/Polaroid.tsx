@@ -9,6 +9,7 @@ import {
   MESH,
   POLAROID_MOTION as M,
   PRINT,
+  SHADOW,
   VERT,
   buildMesh,
   buildWalls,
@@ -177,6 +178,9 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
       shadowOffset: u("uShadowOffset"),
       thick: u("uThick"),
       wall: u("uWall"),
+      curl: u("uCurl"),
+      shadowSlope: u("uShadowSlope"),
+      shadowSpread: u("uShadowSpread"),
       photo: u("uPhoto"),
       back: u("uBack"),
       window: u("uWindow"),
@@ -202,6 +206,7 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
     );
     gl.uniform1f(U.radius, PRINT.radius);
     gl.uniform1f(U.thick, PRINT.thickness);
+    gl.uniform1f(U.curl, M.curl);
     gl.uniform3f(U.paper, 0.968, 0.962, 0.948);
     gl.uniform1i(U.photo, 0);
     gl.uniform1i(U.back, 1);
@@ -381,18 +386,25 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
-      // Shadow first, without depth, thrown down and to the right and going
-      // softer and fainter the further the card is from the table.
+      // Shadow first, without depth: two layers, each cast from the sheet
+      // by its own height, fading as the print comes away from the table.
       const height = lift + Math.max(0, S.y.value) * 0.3 + (S.scale.value - 1);
       gl.disable(gl.DEPTH_TEST);
       gl.disable(gl.CULL_FACE);
       gl.uniform1f(U.wall, 0);
       useSheet(0);
       gl.uniform1f(U.shadow, 1);
-      gl.uniform3f(U.shadowOffset, 0.01 + height * 0.05, -0.028 - height * 0.12, -0.02);
-      gl.uniform1f(U.shadowAlpha, clamp(0.3 - height * 0.24, 0.06, 0.3) * shadowGain);
-      gl.uniform1f(U.shadowSoft, 0.035 + height * 0.16);
-      gl.drawElements(gl.TRIANGLES, mesh.index.length, gl.UNSIGNED_SHORT, 0);
+      for (const layer of [SHADOW.ambient, SHADOW.contact]) {
+        gl.uniform3f(U.shadowOffset, layer.offset[0], layer.offset[1], 0);
+        gl.uniform2f(U.shadowSlope, layer.slope[0], layer.slope[1]);
+        gl.uniform1f(U.shadowSoft, layer.soft);
+        gl.uniform1f(U.shadowSpread, layer.spread);
+        gl.uniform1f(
+          U.shadowAlpha,
+          clamp(layer.alpha * (1 - height * 0.8), layer.alpha * 0.2, layer.alpha) * shadowGain,
+        );
+        gl.drawElements(gl.TRIANGLES, mesh.index.length, gl.UNSIGNED_SHORT, 0);
+      }
 
       gl.enable(gl.DEPTH_TEST);
       gl.uniform1f(U.shadow, 0);
