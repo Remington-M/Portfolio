@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
+  animate,
   motion,
+  useMotionValue,
   useMotionValueEvent,
   useTransform,
   useReducedMotion,
@@ -11,11 +13,16 @@ import {
 import { useStage } from "@/components/media/stage";
 import Header from "@/components/Header";
 import Ledger from "./Ledger";
+import HeroType, { type HeroTypeHandle } from "./HeroType";
+import HeroTunePanel from "./HeroTunePanel";
+import { heroSpring, heroTune, onHeroReplay } from "@/lib/heroTuning";
 import Ticks from "@/components/Ticks";
 import { projects } from "@/lib/projects";
 import {
   DECK,
   DECK_MOTION,
+  HERO_INTRO,
+  HOUSE,
   HERO_EXIT,
   HOME_IDLE,
   TYPE,
@@ -35,6 +42,7 @@ import { frontIndex, stageY } from "@/lib/geometry";
  * The cards themselves are not here. They live in the persistent media layer so
  * they can survive the navigation into a project page.
  */
+
 export default function Home() {
   const {
     p,
@@ -47,9 +55,79 @@ export default function Home() {
     deckDriven,
     registerDeckScroll,
     rebaseDeck,
+    deal,
   } = useStage();
   const reduced = useReducedMotion() ?? false;
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * The landing sequence plays on a fresh arrival only. Coming back from a
+   * project there is a deck to restore and no hero moment to stage.
+   */
+  const [playIntro] = useState(() => restoreDeck() === null && deal.get() < 1);
+
+  /**
+   * Deal the cards in once the sentence has arrived. The layer's own springs
+   * carry each card, so this is one eased value they all follow.
+   */
+  const [dealt, setDealt] = useState(() => deal.get() >= 1);
+  const heroRef = useRef<HeroTypeHandle>(null);
+  const heroBox = useRef<HTMLHeadingElement>(null);
+  /**
+   * The sentence is typed in the middle of the screen and rises to its seat
+   * as the cards deal in. This is that lift, in px, on top of the seat.
+   */
+  const heroY = useMotionValue(0);
+  /**
+   * The tuning panel can ask for the sequence again: the cards go back
+   * under the stage and the sentence remounts and plays from the top.
+   */
+  const [introKey, setIntroKey] = useState(0);
+  useEffect(
+    () =>
+      onHeroReplay(() => {
+        deal.set(0);
+        setDealt(false);
+        setIntroKey((k) => k + 1);
+      }),
+    [deal],
+  );
+  const dealIn = useCallback(() => {
+    if (deal.get() >= 1) {
+      setDealt(true);
+      return;
+    }
+    if (reduced) {
+      deal.set(1);
+      setDealt(true);
+      return;
+    }
+    animate(deal, 1, {
+      duration: HERO_INTRO.deal.duration,
+      ease: HOUSE,
+      onComplete: () => setDealt(true),
+    });
+    animate(heroY, 0, heroSpring(heroTune.riseStiffness, heroTune.riseRatio, heroTune.riseMass));
+    setTimeout(
+      () => heroRef.current?.ripple(0.5, heroTune.rippleOriginY),
+      heroTune.rippleDelay * 1000,
+    );
+  }, [deal, reduced, heroY]);
+
+  /**
+   * Put the sentence in the middle of the screen before it starts typing.
+   * Measured once the stage is known; the text is clipped to nothing until
+   * the sequence starts, so nothing is seen moving into place.
+   */
+  useEffect(() => {
+    if (!(playIntro || introKey > 0) || reduced || stage.h === 0) return;
+    const el = heroBox.current;
+    if (!el) return;
+    const seat = stageY(stage, mobile ? 132 : 256);
+    heroY.set(stage.h / 2 - seat - el.offsetHeight / 2);
+    // On mount, and again on replay.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [introKey, stage.h]);
 
   /**
    * One continuous scroll, inferred from the gaps between its events, and how
@@ -164,6 +242,9 @@ export default function Home() {
       idling.current = false;
       setIdle(false);
       owed.current = true;
+      // Scrolling into the deck before it has finished dealing: the cards are
+      // wanted now, and their own springs smooth the rest of the way.
+      if (deal.get() < 1) deal.set(1);
     }
 
     /**
@@ -269,6 +350,7 @@ export default function Home() {
   }, [
     pTarget,
     pi,
+    deal,
     n,
     lap,
     cfg.intro,
@@ -357,7 +439,9 @@ export default function Home() {
    * and the animation at once is invisible.
    */
   useEffect(() => {
-    if (!idle || reduced) return;
+    // Not until the cards are on the screen: a card thrown while the deck is
+    // still rising is a collision, not a deal.
+    if (!idle || !dealt || reduced) return;
     /**
      * A chain of timeouts rather than one interval, because the first wait is
      * longer than the rest: the card you arrive on gets a proper look before
@@ -381,7 +465,7 @@ export default function Home() {
     };
     timer = setTimeout(tick, HOME_IDLE.first);
     return () => clearTimeout(timer);
-  }, [idle, reduced, n, pTarget, rebaseDeck, deckDriven]);
+  }, [idle, dealt, reduced, n, pTarget, rebaseDeck, deckDriven]);
 
   const jumpTo = useCallback(
     (i: number) => {
@@ -547,6 +631,7 @@ export default function Home() {
             }}
           >
             <Header variant="home" />
+            <HeroTunePanel />
 
             <motion.div
               style={{
@@ -559,10 +644,12 @@ export default function Home() {
                 justifyContent: "center",
                 opacity: heroOpacity,
                 scale: heroScale,
+                y: heroY,
                 pointerEvents: "none",
               }}
             >
               <h1
+                ref={heroBox}
                 style={{
                   margin: 0,
                   maxWidth: mobile ? "none" : 760 * ts,
@@ -577,8 +664,26 @@ export default function Home() {
                   textWrap: "pretty",
                 }}
               >
-                Hey, I&rsquo;m Remington and I make software come to life with
-                motion.
+                <HeroType
+                  ref={heroRef}
+                  key={introKey}
+                  play={playIntro || introKey > 0}
+                  typed="Hey,"
+                  words={[
+                    "I\u2019m",
+                    "Remington",
+                    "and",
+                    "I",
+                    "make",
+                    "software",
+                    "come",
+                    "to",
+                    "life",
+                    "with",
+                    "motion.",
+                  ]}
+                  onDone={dealIn}
+                />
               </h1>
             </motion.div>
 

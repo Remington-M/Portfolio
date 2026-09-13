@@ -30,7 +30,13 @@ export default function TunePanel() {
   useEffect(() => subscribeTuning(() => bump((n) => n + 1)), []);
 
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).has("tune")) setOpen(true);
+    // `?tune` on a project page. On the home page it belongs to the landing
+    // sequence's own panel, which sits in the same corner.
+    if (
+      new URLSearchParams(window.location.search).has("tune") &&
+      window.location.pathname.startsWith("/work")
+    )
+      setOpen(true);
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
       if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)))

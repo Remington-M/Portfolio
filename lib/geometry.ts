@@ -8,6 +8,7 @@ import {
   SCALE,
   frameBox,
   type ShotKind,
+  HERO_INTRO,
 } from "./design";
 import { clamp, clamp01, lerp, smoothstep } from "./spring";
 
@@ -213,12 +214,56 @@ export function deckZ(i: number, count: number, p: number): number {
 }
 
 /**
+ * Fan angle for a card `depth` places back, in degrees.
+ *
+ * Derived from the deck's own size rather than read from a list, so both ends
+ * are square whatever the deck holds: the front card because it is the one
+ * being looked at, and the deepest because the arc that carries a card to the
+ * back has no fan of its own — anything else and every dealt card snaps into
+ * its fan angle the instant it stops travelling.
+ *
+ * In between, cards splay to alternating sides, further the deeper they sit,
+ * with the outermost pair reaching `spread`. Depth is fractional while the
+ * deck moves, so the angle is read between the two nearest whole steps rather
+ * than snapped to one — a card settling into the front slot turns smoothly
+ * upright instead of flicking there.
+ */
+function fanAngle(depth: number, deepest: number, spread: number): number {
+  const at = (d: number) => {
+    if (deepest < 1 || d <= 0) return 0;
+    /**
+     * Cards step outward from the front, alternating sides.
+     *
+     * The front card is square because it is the one being read, so it has to
+     * sit in the MIDDLE of the fan — and the only way to reach the middle from
+     * one end of a depth order is to alternate. Laid out in depth order left
+     * to right instead, the square card lands between the two innermost cards
+     * and halves their gaps: five cards came out at 14.7, 7.3, 7.3, 14.7
+     * degrees apart. Alternating, every gap is the same gap.
+     *
+     * The deepest card is fanned like the rest. Squaring it as well as the
+     * front one was what an earlier version did to stop a dealt card snapping
+     * as it landed, and it cost the fan a position — the shuffle that carries
+     * a card to the back now lands it on its fan angle instead.
+     */
+    const pairs = Math.max(1, Math.ceil(deepest / 2));
+    const side = d % 2 === 1 ? -1 : 1;
+    return (side * Math.ceil(d / 2) * spread) / pairs;
+  };
+  const lo = Math.floor(depth);
+  return lerp(at(lo), at(lo + 1), depth - lo);
+}
+
+/**
  * One deck card's geometry.
  *
  * `p` is fractional on purpose — the shuffle is continuous, and a card whose
  * depth passes the back of the stack swings out to the right, rotates in Y and
  * tucks in behind. That arc is the signature motion of the site.
  */
+/** Cubic ease-out, for a rise that lands softly. */
+const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+
 export function deckCard(
   i: number,
   count: number,
@@ -248,6 +293,11 @@ export function deckCard(
    * it is sharing the air with others and has to get around them too.
    */
   arcScale = 1,
+  /**
+   * How far the landing deck has been dealt in, 0–1. Below 1 the cards sit
+   * under the stage and the fan is closed; see HERO_INTRO.deal.
+   */
+  deal = 1,
 ): Geo {
   const cfg = stage.mobile ? DECK.mobile : DECK.desktop;
   const size = deckCardSize(stage);
@@ -314,6 +364,24 @@ export function deckCard(
   const lean = reduced ? 0 : cfg.lean * splay;
 
   /**
+   * How much of the stack's own scatter is showing: none on the landing
+   * screen, all of it once the deck has assembled.
+   *
+   * The fan and the scatter are two different accounts of how the stack is
+   * arranged, and running both at once gave neither. The fan turns every card
+   * about one pivot by an even step; the scatter steps each card up and to the
+   * right by its depth, leans it five degrees by turn, and jitters the result.
+   * Together the leans cancelled two cards onto the same angle, and the depth
+   * steps pushed the deeper half of the fan sideways — the gaps came out 38,
+   * 48, 69 and 68 pixels across an arc whose angles were exactly even.
+   *
+   * They cross-fade instead. Fanned, the cards share a pivot and nothing but
+   * the fan places them, which is what a hand of cards is. Assembled, the
+   * stack has its offsets and its lean back, exactly as before.
+   */
+  const scatter = intro;
+
+  /**
    * Resting position for a card `d` places back in the stack.
    *
    * The lean lives in here rather than being added at the one place a resting
@@ -323,10 +391,10 @@ export function deckCard(
    * card was counted as resting.
    */
   const rest = (d: number) => ({
-    x: d * cfg.dx * k + jx * 0.4 * Math.min(1, d),
-    y: d * cfg.dy * k + jy * 0.55 * Math.min(1, d),
+    x: (d * cfg.dx * k + jx * 0.4 * Math.min(1, d)) * scatter,
+    y: (d * cfg.dy * k + jy * 0.55 * Math.min(1, d)) * scatter,
     scale: 1 - d * cfg.dScale,
-    rotate: d < 0.02 ? 0 : jr * (0.3 + 0.12 * d) + lean,
+    rotate: d < 0.02 ? 0 : (jr * (0.3 + 0.12 * d) + lean) * scatter,
   });
 
   /**
@@ -349,6 +417,33 @@ export function deckCard(
     ? 1
     : lerp(DECK.desktop.heroScale[0], DECK.desktop.heroScale[1], intro);
 
+  /**
+   * Where the fan puts a card `d` places back: its angle, and the offset that
+   * comes of turning it about a pivot below the stack.
+   *
+   * Turning about a point that far below is what sets the cards side by side
+   * rather than merely leaning them — the further round a card turns the more
+   * it also carries sideways and lifts. Folds to nothing as the intro plays,
+   * so the fan, the shrink and the travel to the right are one scroll and
+   * scrubbing back up re-fans exactly.
+   */
+  /**
+   * The deal: cards rise from below the stage as one stack, and the fan
+   * opens over the back half of the rise so they arrive and then sprawl.
+   */
+  const dealRise = 1 - easeOut(clamp01(deal / 0.85));
+  const dealSpread = smoothstep(
+    clamp01((deal - HERO_INTRO.deal.spreadFrom) / (1 - HERO_INTRO.deal.spreadFrom)),
+  );
+  const fanAt = (d: number) => {
+    const deg = reduced
+      ? 0
+      : fanAngle(d, deepest, cfg.fan.spread) * (1 - intro) * dealSpread;
+    const rad = (deg * Math.PI) / 180;
+    const pivot = cfg.fan.pivot * k;
+    return { deg, dx: pivot * Math.sin(rad), dy: pivot * (1 - Math.cos(rad)) };
+  };
+
   let x: number, y: number, scale: number, rotate: number;
   let rotateY = 0;
   let scrim: number, z: number;
@@ -361,10 +456,20 @@ export function deckCard(
     const ease = smoothstep(t);
     const arc = Math.sin(t * Math.PI);
     const deep = rest(deepest);
-    x = deep.x * ease + arc * size.width * cfg.arcXWidths * arcScale * dir;
-    y = deep.y * ease + arc * cfg.arcY * k;
+    /**
+     * The slot at the back is a fanned slot, so the arc has to land on it.
+     *
+     * This carried no fan at all, which forced the deepest card's fan angle to
+     * be zero — the only value that let a dealt card stop without a step. Every
+     * other value snapped: a card arrived square and then turned the moment it
+     * counted as resting rather than travelling. Folding the landing angle into
+     * the arc frees the back of the fan to be wherever the spread wants it.
+     */
+    const f = fanAt(deepest);
+    x = (deep.x + f.dx) * ease + arc * size.width * cfg.arcXWidths * arcScale * dir;
+    y = (deep.y + f.dy) * ease + arc * cfg.arcY * k;
     scale = 1 + (deep.scale - 1) * ease;
-    rotate = reduced ? 0 : deep.rotate * ease + arc * cfg.arcRot * dir;
+    rotate = reduced ? 0 : (deep.rotate + f.deg) * ease + arc * cfg.arcRot * dir;
     rotateY = reduced ? 0 : arc * cfg.arcRotY * dir;
     /**
      * Held fully opaque while the card is still passing in FRONT of the stack,
@@ -381,8 +486,10 @@ export function deckCard(
   } else {
     const pull = pullAt(depth);
     const g = rest(Math.max(0, depth - pull.depth));
-    x = g.x;
-    y = g.y;
+    const f = fanAt(depth);
+    const fan = f.deg;
+    x = g.x + f.dx;
+    y = g.y + f.dy;
     scale = g.scale;
     /**
      * The front card is always square to the viewer.
@@ -392,7 +499,7 @@ export function deckCard(
      * rotation the stack carries fades out as a card reaches the front, so it
      * arrives upright rather than snapping straight.
      */
-    rotate = (g.rotate + pull.rot) * Math.min(1, depth);
+    rotate = (g.rotate + pull.rot) * Math.min(1, depth) + fan;
     scrim = restScrim(depth);
     z = 50 - depth;
   }
@@ -403,7 +510,11 @@ export function deckCard(
 
   return {
     x: cx + shift - size.width / 2 + x,
-    y: cy - size.height / 2 + y,
+    y:
+      cy -
+      size.height / 2 +
+      y +
+      dealRise * size.height * HERO_INTRO.deal.riseHeights,
     w: size.width,
     h: size.height,
     radius: size.radius,

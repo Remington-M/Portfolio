@@ -418,6 +418,240 @@ export const HOME_IDLE = {
 } as const;
 
 /**
+ * The landing sequence, typed.
+ *
+ * The sentence is set in full from the first frame and revealed behind a
+ * cursor. "Hey," is typed slowly, a character at a time; the cursor then
+ * sits and blinks for a beat; then it takes off — sweeping the rest of the
+ * line and the line below at speed, the text appearing in its wake. When
+ * it moves that fast its trailing edge lags behind its leading edge, so
+ * it stretches into a box that smears across the line, the way a
+ * fast-moving thing is drawn in old animation. The cards deal in as the
+ * last line finishes.
+ *
+ * Times are seconds; the cursor's dimensions are in em of the hero size.
+ */
+export const HERO_TYPE = {
+  /** Quiet before anything moves. */
+  lead: 0.5,
+  /** The cursor's blink: one full on-and-off cycle. */
+  blink: 1.0,
+  /** How long the cursor blinks alone before "Hey," is typed. */
+  blinkIn: 0.9,
+  /** Time between typed characters. */
+  perChar: 0.17,
+  /** The pause after "Hey,", blinking. The beat. */
+  hold: 1.6,
+  /** The sweep: how long the cursor takes to cross one full line. Shorter
+   *  lines take proportionally less. */
+  sweep: 0.26,
+  /** A breath between lines, with the cursor already at the next line's
+   *  start. */
+  lineGap: 0.06,
+  /**
+   * The smear, from speed. The cursor's speed along the line is measured
+   * in em per second; below `threshold` there is no tail at all, so typing
+   * never smears, and above it the tail is `gain` em long for every em/s
+   * over the threshold. The sweep's speed is what triggers it, so a faster
+   * sweep is a longer smear. `rise` smooths the speed reading so a single
+   * typed jump does not register as a burst; `relax` is how long the tail
+   * takes to catch up once the cursor slows.
+   */
+  smear: { threshold: 20, gain: 0.03, rise: 0.05, relax: 0.08 },
+  /** Cursor: width, its reach above and below the baseline, and a nudge
+   *  along the line from where the text actually ends — all in em. */
+  cursor: { width: 0.085, above: 0.76, below: 0.24, offset: 0.02 },
+  /**
+   * How the cursor crosses a line. `ease` runs it on a curve over `sweep`
+   * seconds; `spring` runs it on physics and ignores `sweep`.
+   */
+  sweepMode: "ease" as "ease" | "spring",
+  sweepEase: [0.4, 0, 0.2, 1] as [number, number, number, number],
+  sweepSpring: { stiffness: 120, ratio: 1, mass: 1 },
+  /**
+   * The words, which come in against the cursor: it sweeps right and they
+   * arrive from the right, each one starting as the cursor reaches it.
+   */
+  word: {
+    /** How far a word travels in, in em. */
+    travel: 0.5,
+    /** Started this long after the cursor reaches the word — the stagger on
+     *  top of the one the sweep already gives. */
+    delay: 0.04,
+    /** The spring it arrives on: stiffness, damping RATIO (1 is critically
+     *  damped, below it overshoots), and mass. */
+    stiffness: 170,
+    ratio: 0.8,
+    mass: 1,
+    /** Fades in over this long, under the spring. 0 is no fade. */
+    fade: 0.25,
+  },
+  /**
+   * "Hey," is typed centred on its line. As the sweep begins the whole
+   * line — cursor, clip and words — slides over to its seat on this
+   * spring, and the words make their own entrances inside that slide, so
+   * they follow "Hey" and arrive as well. `lead` starts the slide this long
+   * before the sweep.
+   */
+  slide: { lead: 0.05, stiffness: 110, ratio: 0.9, mass: 1 },
+  /** After the sweep the cursor blinks this long, then fades out. */
+  blinkOut: 1.4,
+  fadeOut: 0.5,
+  /**
+   * The sentence is typed in the middle of the screen. Once it is all in
+   * it holds for a beat, and then the cards deal in from below while the
+   * sentence rises to its seat above them on this spring.
+   */
+  holdIn: 1.0,
+  rise: { stiffness: 60, ratio: 1, mass: 1 },
+  /**
+   * The ripple. As the fan rises a wave goes out from it through the
+   * sentence, which for the duration is made of tiny cells — the text
+   * re-drawn onto a canvas at its own positions and sampled into a grid —
+   * each carried outward and scattered a little as the wave passes, then
+   * settling back. The same wave, smaller, answers a hover from the pointer.
+   * Distances in px at the 1440 stage; speed in px/s.
+   */
+  ripple: {
+    /** Cell size, in DEVICE pixels: 1 is a single retina pixel, so at rest
+     *  the sentence is indistinguishable from the type. */
+    pixel: 1,
+    /** Starts this long after the deal begins. */
+    delay: 0.15,
+    /** Where it comes from, as a fraction of the sentence box: below its
+     *  bottom edge, in the middle. */
+    origin: { x: 0.5, y: 1.9 },
+    speed: 520,
+    wavelength: 190,
+    /** Width of the pulse, in px along the direction of travel. */
+    width: 320,
+    /** Peak displacement along the wave, px, and the random scatter on top. */
+    amplitude: 6,
+    scatter: 2.5,
+    /** How much the cells fade at the peak, 0–1. */
+    dim: 0.25,
+    /** A train of pulses: how many, the time between them, and how much
+     *  weaker each is than the one before (1 is all equal). */
+    pulses: 2,
+    pulseGap: 0.32,
+    pulseDecay: 0.7,
+  },
+  /**
+   * Hover: a particle system. Every cell has a velocity and a spring back
+   * to its seat; the pointer throws the cells near it in the direction it
+   * is moving, harder the faster it moves, and they swirl and settle. All
+   * of it in px, px/s and seconds.
+   */
+  hover: {
+    /** Reach of the pointer's influence, px. */
+    radius: 80,
+    /** Throw: cell acceleration per unit of pointer speed, at the centre. */
+    force: 1.6,
+    /** How much of the throw is outward from the pointer rather than along
+     *  its motion, 0–1. */
+    outward: 0.35,
+    /** Pointer speed above which the throw stops growing, px/s. */
+    maxSpeed: 2500,
+    /** The spring home: stiffness and damping ratio. */
+    stiffness: 90,
+    ratio: 0.45,
+  },
+} as const;
+
+/**
+ * The landing sequence.
+ *
+ * Nothing is on screen at first. "Hey" arrives from the right, alone in the
+ * middle of its line, and the mark after it is an exclamation point drawn
+ * as paths — a stem that rises out of its dot, carried past its resting
+ * height as anticipation, held, and then dropped back into the dot; the
+ * dot then morphs, point for point, into the comma the sentence actually
+ * needs, and springs back a little to resolve the fall. The rest of the
+ * sentence follows a word at a time from the right while "Hey" slides over
+ * to make room for it. Only once the last word is in do the cards deal
+ * themselves onto the screen underneath.
+ *
+ * Everything here is slow on purpose: it is the first thing on the site
+ * and it is meant to be watched, not gotten through. Times are seconds;
+ * distances are authored pixels at the 1440 stage, scaled at the point of
+ * use, unless marked as em.
+ */
+export const HERO_INTRO = {
+  /** Quiet before anything moves. */
+  lead: 0.6,
+  /**
+   * The text entrances, as one spring — snappy in, gentle to rest. Every
+   * word and "Hey" itself use it, and so does the slide that carries the
+   * whole line over, so nothing on the line moves at a rate the rest does
+   * not share.
+   */
+  spring: { type: "spring", visualDuration: 1.15, bounce: 0.14 },
+  hey: {
+    /** How far "Hey" travels as it arrives. Short: a settle, not a slide. */
+    travel: 26,
+    /** Its fade, which rides under the spring. */
+    fade: 0.7,
+  },
+  /**
+   * The mark. Geometry lives with the paths in BangComma; these are its
+   * clocks, in order. It arrives whole, as an exclamation point, rising and
+   * accelerating into a peak where the stem stretches; it then drifts back
+   * toward its seat without ever quite stopping, collapses, and the dot
+   * becomes the comma.
+   */
+  bang: {
+    /** Starts this long after "Hey" begins arriving. */
+    at: 0.5,
+    /** How far below its seat the whole mark starts, in em. */
+    from: 0.05,
+    /** The fade in, riding under the open. */
+    fade: 0.18,
+    /** The open: the stem shoots from nothing to past its height. Quick. */
+    rise: 0.36,
+    /** How far past its seat the top of the stem goes, in em. */
+    overshoot: 0.12,
+    /** The ease at the top — it slows, but only for a moment, and ends this
+     *  fraction of the overshoot still above the seat, so it is still
+     *  moving when it snaps down. */
+    drift: 0.32,
+    driftRest: 0.25,
+    /** The snap back down into the dot. */
+    collapse: 0.2,
+    /** The dot becoming the comma: out past the comma's shape... */
+    morphOut: 0.3,
+    /** ...by this much (1 is the comma exactly), and back. */
+    morphOvershoot: 1.22,
+    morphBack: 0.6,
+  },
+  rest: {
+    /** The remaining words start this long after the collapse lands. */
+    after: 0.35,
+    /** The line starts sliding to its seat this long before the words
+     *  come, so the space beside "Hey" is opening as they land in it. */
+    lead: 0.3,
+    /** Each word arrives this much after the one before it. */
+    stagger: 0.07,
+    /** Each word's own entrance, inside the line that carries it. */
+    travel: 22,
+    fade: 0.8,
+  },
+  deal: {
+    /** The cards start rising this long before the last word is fully in,
+     *  so the two overlap at the tail rather than queueing. */
+    lead: 0.9,
+    duration: 2.8,
+    /** How far below their seats the cards start, in card heights. Enough
+     *  that the front card, which sits low on the landing screen, is fully
+     *  under the bottom edge before the deal. */
+    riseHeights: 1.15,
+    /** The fan opens over the second part of the rise: cards arrive as a
+     *  stack, then sprawl. 0–1 fraction of the deal at which the spread
+     *  begins. */
+    spreadFrom: 0.3,
+  },
+} as const;
+
+/**
  * How the hero sentence leaves as the deck assembles under it.
  *
  * It used to slide up and to the left while it faded, which put the sentence
@@ -442,6 +676,46 @@ export const HERO_EXIT = {
    * back and starts reading as a zoom.
    */
   scale: 0.94,
+} as const;
+
+/**
+ * The word "motion" in the hero, on hover.
+ *
+ * The ink crossfades out and a spiral, clipped to the letterforms, turns
+ * underneath — painted per pixel by HeroWord, since no CSS gradient can
+ * spiral. It is a logarithmic spiral, which is the kind that tightens as it
+ * winds in, drawn about a centre held just below the word so the arms are
+ * felt converging without the eye of it ever being on screen.
+ *
+ * Two spirals are summed: a coarse one that carries the turn, and a fine
+ * one riding on it at a fraction of the weight, so the surface has depth
+ * rather than reading as one rotating sheet.
+ */
+export const HERO_GRADIENT = {
+  /** How long the ink takes to give way to colour, in ms. Slow on purpose:
+   *  the hand arrives and the word warms rather than switches. */
+  fadeIn: 900,
+  /** And how long it cools back to ink when the hand leaves. */
+  fadeOut: 1400,
+  /** Where the spiral winds toward, as a fraction of the word's box. Below
+   *  the baseline and left of centre, so the arms sweep across the letters
+   *  on a diagonal rather than fanning symmetrically out of the middle. */
+  centre: { x: 0.42, y: 1.35 },
+  /** Softens the singularity: radius is measured in em, and this is added
+   *  before the log so the winding cannot run away at the centre. */
+  eye: 0.35,
+  /** The turn itself. `arms` is how many colour laps go once around the
+   *  centre; `wind` is how many laps happen per e-fold of radius, which is
+   *  what sets how steeply the arms wind — 0 would be a plain pinwheel;
+   *  `period` is seconds for one lap of colour to pass a point. */
+  coarse: { arms: 1, wind: 4, period: 5 },
+  /** A tighter, faster spiral summed onto the phase at `weight` radians of
+   *  amplitude. Small: it is texture on the turn, not a second turn. */
+  fine: { arms: 2, wind: 6, period: -3.5, weight: 1.3 },
+  /** Three stops, so at most two are ever blending at a point and the
+   *  word reads as colour moving rather than as a rainbow. Hex, because the
+   *  canvas mixes them itself in linear light. */
+  stops: ["#c85a34", "#e3a12e", "#22566b"],
 } as const;
 
 export const DECK = {
@@ -577,6 +851,29 @@ export const DECK = {
      * and the intro is carried by the move and the scale instead.
      */
     lean: 5,
+    /**
+     * The landing fan.
+     *
+     * Before the deck assembles it sits fanned like a hand of cards: the front
+     * card square to the viewer, the rest splayed either side of it around a
+     * pivot below the stack, the deepest straight behind. `spread` is how far
+     * the outermost card turns; `pivot` is how far below a card's centre the
+     * fan turns about, in authored pixels, before the landing scale. Both
+     * resolve to nothing as the intro completes, so the fold, the shrink and
+     * the travel to the right are one move — and the lean the stack keeps is
+     * what the fan folds back down to.
+     *
+     * An angle per card, written out by hand, is what this was: six of them,
+     * ending in a zero that kept the deepest card square. The deck is five
+     * cards now, so the list ran out one short and the deepest card took the
+     * FIFTH angle — 22 degrees — while the arc that delivers it there carries
+     * no fan at all. Every card dealt to the back arrived square and then
+     * snapped 22 degrees the moment it counted as resting. The angles are
+     * derived from the deck's own size instead, so the two ends are always
+     * zero however many projects there are. Six cards still resolve to exactly
+     * the hand-written set.
+     */
+    fan: { spread: 22, pivot: 360 },
   },
   mobile: {
     intro: 300,
@@ -605,6 +902,7 @@ export const DECK = {
     pullRot: 0.5,
     pullReach: 3,
     lean: 4,
+    fan: { spread: 12, pivot: 260 },
   },
 } as const;
 
