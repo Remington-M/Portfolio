@@ -400,7 +400,7 @@ export const HOME_IDLE = {
    * while they are still taking it in reads as impatience rather than as an
    * invitation.
    */
-  first: 6000,
+  first: 10000,
   /** Milliseconds a card rests at the front before the next one is dealt. */
   every: 3000,
   /**

@@ -108,6 +108,57 @@ const PLACEHOLDER_COLLAB = "Name Surname, Name Surname";
  */
 export const projects: Project[] = [
   {
+    slug: "airbnb-reservations",
+    title: "Airbnb Reservations",
+    year: "2025",
+    overview: PLACEHOLDER_OVERVIEW,
+    collaborators: PLACEHOLDER_COLLAB,
+    src: "/media/airbnb-reservations/reservation-detail.mp4",
+    poster: "/media/airbnb-reservations/poster.jpg",
+    /**
+     * The native reservation detail, the avatar work underneath it, then the
+     * desktop surface last. The three avatar clips are component renders
+     * rather than screen captures, which is why they are wide and sit on white.
+     */
+    shots: [
+      {
+        n: "02",
+        title: "Reservation Detail",
+        kind: "portrait",
+        src: "/media/airbnb-reservations/reservation-detail.mp4",
+        aspect: 0.4609,
+      },
+      {
+        n: "03",
+        title: "Guest Avatars",
+        kind: "landscape",
+        src: "/media/airbnb-reservations/guest-avatars.mp4",
+        aspect: 1.88,
+      },
+      {
+        n: "04",
+        title: "Avatar Pile Studies",
+        kind: "square",
+        src: "/media/airbnb-reservations/avatar-pile-studies.mp4",
+        aspect: 0.752,
+      },
+      {
+        n: "05",
+        title: "Multi-Supply Avatars",
+        kind: "landscape",
+        src: "/media/airbnb-reservations/multi-supply-avatars.mp4",
+        aspect: 1.88,
+      },
+      {
+        n: "06",
+        title: "Reservation Detail Desktop",
+        kind: "desktop",
+        src: "/media/airbnb-reservations/reservation-detail-desktop.mp4",
+        aspect: 1.4063,
+      },
+    ],
+  },
+  {
     slug: "airbnb-setup",
     title: "Airbnb Setup",
     year: "2025",
@@ -219,57 +270,6 @@ export const projects: Project[] = [
         kind: "landscape",
         src: "/media/airbnb-setup/celebration.mp4",
         aspect: 1.7778,
-      },
-    ],
-  },
-  {
-    slug: "airbnb-reservations",
-    title: "Airbnb Reservations",
-    year: "2025",
-    overview: PLACEHOLDER_OVERVIEW,
-    collaborators: PLACEHOLDER_COLLAB,
-    src: "/media/airbnb-reservations/reservation-detail.mp4",
-    poster: "/media/airbnb-reservations/poster.jpg",
-    /**
-     * The native reservation detail, the avatar work underneath it, then the
-     * desktop surface last. The three avatar clips are component renders
-     * rather than screen captures, which is why they are wide and sit on white.
-     */
-    shots: [
-      {
-        n: "02",
-        title: "Reservation Detail",
-        kind: "portrait",
-        src: "/media/airbnb-reservations/reservation-detail.mp4",
-        aspect: 0.4609,
-      },
-      {
-        n: "03",
-        title: "Guest Avatars",
-        kind: "landscape",
-        src: "/media/airbnb-reservations/guest-avatars.mp4",
-        aspect: 1.88,
-      },
-      {
-        n: "04",
-        title: "Avatar Pile Studies",
-        kind: "square",
-        src: "/media/airbnb-reservations/avatar-pile-studies.mp4",
-        aspect: 0.752,
-      },
-      {
-        n: "05",
-        title: "Multi-Supply Avatars",
-        kind: "landscape",
-        src: "/media/airbnb-reservations/multi-supply-avatars.mp4",
-        aspect: 1.88,
-      },
-      {
-        n: "06",
-        title: "Reservation Detail Desktop",
-        kind: "desktop",
-        src: "/media/airbnb-reservations/reservation-detail-desktop.mp4",
-        aspect: 1.4063,
       },
     ],
   },
@@ -528,7 +528,7 @@ export function titleLines(project: Project): readonly string[] {
  * project, so the stack you browse agrees with the row the ledger starts on;
  * this is what you land on, not where browsing begins.
  */
-export const OPENING_SLUG = "airbnb-reservations";
+export const OPENING_SLUG = "airbnb-setup";
 
 /** Its index, or the first project if the slug ever stops matching. */
 export function openingIndex(): number {
