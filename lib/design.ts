@@ -411,6 +411,147 @@ export const HOME_IDLE = {
 } as const;
 
 /**
+ * The landing sequence, typed.
+ *
+ * The sentence is set in full from the first frame and revealed behind a
+ * cursor. "Hey," is typed slowly, a character at a time; the cursor then
+ * sits and blinks for a beat; then it takes off — sweeping the rest of the
+ * line and the line below at speed, the text appearing in its wake. When
+ * it moves that fast its trailing edge lags behind its leading edge, so
+ * it stretches into a box that smears across the line, the way a
+ * fast-moving thing is drawn in old animation. The cards deal in as the
+ * last line finishes.
+ *
+ * Times are seconds; the cursor's dimensions are in em of the hero size.
+ */
+export const HERO_TYPE = {
+  /** Quiet before anything moves. */
+  lead: 0.5,
+  /** The cursor's blink: one full on-and-off cycle. */
+  blink: 1.0,
+  /** How long the cursor blinks alone before "Hey," is typed. */
+  blinkIn: 0.9,
+  /** Time between typed characters. */
+  perChar: 0.17,
+  /** The pause after "Hey,", blinking. The beat. */
+  hold: 1.6,
+  /** The sweep: how long the cursor takes to cross one full line. Shorter
+   *  lines take proportionally less. */
+  sweep: 0.26,
+  /** A breath between lines, with the cursor already at the next line's
+   *  start. */
+  lineGap: 0.06,
+  /**
+   * The smear, from speed. The cursor's speed along the line is measured
+   * in em per second; below `threshold` there is no tail at all, so typing
+   * never smears, and above it the tail is `gain` em long for every em/s
+   * over the threshold. The sweep's speed is what triggers it, so a faster
+   * sweep is a longer smear. `rise` smooths the speed reading so a single
+   * typed jump does not register as a burst; `relax` is how long the tail
+   * takes to catch up once the cursor slows.
+   */
+  smear: { threshold: 20, gain: 0.03, rise: 0.05, relax: 0.08 },
+  /** Cursor: width, its reach above and below the baseline, and a nudge
+   *  along the line from where the text actually ends — all in em. */
+  cursor: { width: 0.085, above: 0.76, below: 0.24, offset: 0.02 },
+  /**
+   * How the cursor crosses a line. `ease` runs it on a curve over `sweep`
+   * seconds; `spring` runs it on physics and ignores `sweep`.
+   */
+  sweepMode: "ease" as "ease" | "spring",
+  sweepEase: [0.4, 0, 0.2, 1] as [number, number, number, number],
+  sweepSpring: { stiffness: 120, ratio: 1, mass: 1 },
+  /**
+   * The words, which come in against the cursor: it sweeps right and they
+   * arrive from the right, each one starting as the cursor reaches it.
+   */
+  word: {
+    /** How far a word travels in, in em. */
+    travel: 0.5,
+    /** Started this long after the cursor reaches the word — the stagger on
+     *  top of the one the sweep already gives. */
+    delay: 0.04,
+    /** The spring it arrives on: stiffness, damping RATIO (1 is critically
+     *  damped, below it overshoots), and mass. */
+    stiffness: 170,
+    ratio: 0.8,
+    mass: 1,
+    /** Fades in over this long, under the spring. 0 is no fade. */
+    fade: 0.25,
+  },
+  /**
+   * "Hey," is typed centred on its line. As the sweep begins the whole
+   * line — cursor, clip and words — slides over to its seat on this
+   * spring, and the words make their own entrances inside that slide, so
+   * they follow "Hey" and arrive as well. `lead` starts the slide this long
+   * before the sweep.
+   */
+  slide: { lead: 0.05, stiffness: 110, ratio: 0.9, mass: 1 },
+  /** After the sweep the cursor blinks this long, then fades out. */
+  blinkOut: 1.4,
+  fadeOut: 0.5,
+  /**
+   * The sentence is typed in the middle of the screen. Once it is all in
+   * it holds for a beat, and then the cards deal in from below while the
+   * sentence rises to its seat above them on this spring.
+   */
+  holdIn: 1.0,
+  rise: { stiffness: 60, ratio: 1, mass: 1 },
+  /**
+   * The ripple. As the fan rises a wave goes out from it through the
+   * sentence, which for the duration is made of tiny cells — the text
+   * re-drawn onto a canvas at its own positions and sampled into a grid —
+   * each carried outward and scattered a little as the wave passes, then
+   * settling back. The same wave, smaller, answers a hover from the pointer.
+   * Distances in px at the 1440 stage; speed in px/s.
+   */
+  ripple: {
+    /** Cell size, in DEVICE pixels: 1 is a single retina pixel, so at rest
+     *  the sentence is indistinguishable from the type. */
+    pixel: 1,
+    /** Starts this long after the deal begins. */
+    delay: 0.15,
+    /** Where it comes from, as a fraction of the sentence box: below its
+     *  bottom edge, in the middle. */
+    origin: { x: 0.5, y: 1.9 },
+    speed: 520,
+    wavelength: 190,
+    /** Width of the pulse, in px along the direction of travel. */
+    width: 320,
+    /** Peak displacement along the wave, px, and the random scatter on top. */
+    amplitude: 6,
+    scatter: 2.5,
+    /** How much the cells fade at the peak, 0–1. */
+    dim: 0.25,
+    /** A train of pulses: how many, the time between them, and how much
+     *  weaker each is than the one before (1 is all equal). */
+    pulses: 2,
+    pulseGap: 0.32,
+    pulseDecay: 0.7,
+  },
+  /**
+   * Hover: a particle system. Every cell has a velocity and a spring back
+   * to its seat; the pointer throws the cells near it in the direction it
+   * is moving, harder the faster it moves, and they swirl and settle. All
+   * of it in px, px/s and seconds.
+   */
+  hover: {
+    /** Reach of the pointer's influence, px. */
+    radius: 80,
+    /** Throw: cell acceleration per unit of pointer speed, at the centre. */
+    force: 1.6,
+    /** How much of the throw is outward from the pointer rather than along
+     *  its motion, 0–1. */
+    outward: 0.35,
+    /** Pointer speed above which the throw stops growing, px/s. */
+    maxSpeed: 2500,
+    /** The spring home: stiffness and damping ratio. */
+    stiffness: 90,
+    ratio: 0.45,
+  },
+} as const;
+
+/**
  * The landing sequence.
  *
  * Nothing is on screen at first. "Hey" arrives from the right, alone in the

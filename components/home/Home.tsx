@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   animate,
   motion,
+  useMotionValue,
   useMotionValueEvent,
   useTransform,
   useReducedMotion,
@@ -12,8 +13,9 @@ import {
 import { useStage } from "@/components/media/stage";
 import Header from "@/components/Header";
 import Ledger from "./Ledger";
-import HeroWord from "./HeroWord";
-import HeroIntro from "./HeroIntro";
+import HeroType, { type HeroTypeHandle } from "./HeroType";
+import HeroTunePanel from "./HeroTunePanel";
+import { heroSpring, heroTune, onHeroReplay } from "@/lib/heroTuning";
 import Ticks from "@/components/Ticks";
 import { projects } from "@/lib/projects";
 import {
@@ -69,6 +71,27 @@ export default function Home() {
    * carry each card, so this is one eased value they all follow.
    */
   const [dealt, setDealt] = useState(() => deal.get() >= 1);
+  const heroRef = useRef<HeroTypeHandle>(null);
+  const heroBox = useRef<HTMLHeadingElement>(null);
+  /**
+   * The sentence is typed in the middle of the screen and rises to its seat
+   * as the cards deal in. This is that lift, in px, on top of the seat.
+   */
+  const heroY = useMotionValue(0);
+  /**
+   * The tuning panel can ask for the sequence again: the cards go back
+   * under the stage and the sentence remounts and plays from the top.
+   */
+  const [introKey, setIntroKey] = useState(0);
+  useEffect(
+    () =>
+      onHeroReplay(() => {
+        deal.set(0);
+        setDealt(false);
+        setIntroKey((k) => k + 1);
+      }),
+    [deal],
+  );
   const dealIn = useCallback(() => {
     if (deal.get() >= 1) {
       setDealt(true);
@@ -84,7 +107,27 @@ export default function Home() {
       ease: HOUSE,
       onComplete: () => setDealt(true),
     });
-  }, [deal, reduced]);
+    animate(heroY, 0, heroSpring(heroTune.riseStiffness, heroTune.riseRatio, heroTune.riseMass));
+    setTimeout(
+      () => heroRef.current?.ripple(0.5, heroTune.rippleOriginY),
+      heroTune.rippleDelay * 1000,
+    );
+  }, [deal, reduced, heroY]);
+
+  /**
+   * Put the sentence in the middle of the screen before it starts typing.
+   * Measured once the stage is known; the text is clipped to nothing until
+   * the sequence starts, so nothing is seen moving into place.
+   */
+  useEffect(() => {
+    if (!(playIntro || introKey > 0) || reduced || stage.h === 0) return;
+    const el = heroBox.current;
+    if (!el) return;
+    const seat = stageY(stage, mobile ? 132 : 256);
+    heroY.set(stage.h / 2 - seat - el.offsetHeight / 2);
+    // On mount, and again on replay.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [introKey, stage.h]);
 
   /**
    * One continuous scroll, inferred from the gaps between its events, and how
@@ -588,6 +631,7 @@ export default function Home() {
             }}
           >
             <Header variant="home" />
+            <HeroTunePanel />
 
             <motion.div
               style={{
@@ -600,10 +644,12 @@ export default function Home() {
                 justifyContent: "center",
                 opacity: heroOpacity,
                 scale: heroScale,
+                y: heroY,
                 pointerEvents: "none",
               }}
             >
               <h1
+                ref={heroBox}
                 style={{
                   margin: 0,
                   maxWidth: mobile ? "none" : 760 * ts,
@@ -618,9 +664,11 @@ export default function Home() {
                   textWrap: "pretty",
                 }}
               >
-                <HeroIntro
-                  play={playIntro}
-                  hey="Hey"
+                <HeroType
+                  ref={heroRef}
+                  key={introKey}
+                  play={playIntro || introKey > 0}
+                  typed="Hey,"
                   words={[
                     "I\u2019m",
                     "Remington",
@@ -632,15 +680,9 @@ export default function Home() {
                     "to",
                     "life",
                     "with",
-                    /* The hero block is pointer-transparent so the deck
-                       underneath takes the wheel; this one word takes the
-                       hand back. */
-                    <span key="motion" style={{ pointerEvents: "auto" }}>
-                      <HeroWord>motion</HeroWord>.
-                    </span>,
+                    "motion.",
                   ]}
                   onDone={dealIn}
-                  scale={ts}
                 />
               </h1>
             </motion.div>
