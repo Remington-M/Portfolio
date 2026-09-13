@@ -130,6 +130,14 @@ export default function Home() {
    */
   const lastScrollAt = useRef(0);
   const turnedThisScroll = useRef(0);
+  /** Where the scroller sat on the previous event, to find where a gesture began. */
+  const lastTop = useRef(0);
+  /**
+   * Whether the gesture under way began above the first project — on the hero
+   * or anywhere in the intro. Such a gesture ends on the first project however
+   * hard it was thrown; see the cap in `onScroll`.
+   */
+  const fromHero = useRef(false);
   const [front, setFront] = useState(() => frontIndex(p.get(), projects.length));
 
   const cfg = mobile ? DECK.mobile : DECK.desktop;
@@ -215,6 +223,28 @@ export default function Home() {
     pi.set(Math.min(1, top / cfg.intro));
 
     /**
+     * A gesture is a run of scroll events with no real gap in it — one flick
+     * and its coasting. A quiet moment starts a fresh one, and with it a fresh
+     * allowance.
+     *
+     * Timed on EVERY event, here, before anything below can return early. It
+     * used to start below the intro's early returns, so a flick thrown from the
+     * hero spent its first stretch unseen and arrived at the deck looking like a
+     * brand-new gesture with a full allowance — which its momentum then spent,
+     * landing two or three projects in.
+     *
+     * Where the gesture started is read from the PREVIOUS event's position:
+     * a hard flick's first event can already be deep in the deck.
+     */
+    const now = performance.now();
+    if (now - lastScrollAt.current > DECK_MOTION.gestureGap) {
+      turnedThisScroll.current = 0;
+      fromHero.current = lastTop.current < deckTop(0) - 1;
+    }
+    lastScrollAt.current = now;
+    lastTop.current = top;
+
+    /**
      * Back at the very top: the landing screen again, so the deck deals again.
      *
      * Whatever card browsing left at the front is where the deal picks up —
@@ -272,18 +302,26 @@ export default function Home() {
       if (top < cfg.intro * HOME_IDLE.settleAt) return;
       owed.current = false;
       dealBackToFirst();
+      if (el.scrollTop > deckTop(0) + 1) el.scrollTop = deckTop(0);
       return;
     }
 
     /**
-     * A gesture is a run of scroll events with no real gap in it — one flick
-     * and its coasting. A quiet moment starts a fresh one, and with it a fresh
-     * allowance.
+     * Scrolling down from the hero ends on the first project. Always.
+     *
+     * However hard the flick, a gesture that began above the first project
+     * does not turn a single card: the scroller is held on the first project's
+     * rest and the rest of the momentum is absorbed there. Leaving the hero is
+     * arriving at the work, and the work starts at the top of the list — a
+     * throw that carried past it would skip the one project the ledger opens
+     * on. The next gesture, from the first project, moves through the deck as
+     * normal.
      */
-    const now = performance.now();
-    if (now - lastScrollAt.current > DECK_MOTION.gestureGap)
-      turnedThisScroll.current = 0;
-    lastScrollAt.current = now;
+    if (fromHero.current) {
+      if (el.scrollTop > deckTop(0) + 1) el.scrollTop = deckTop(0);
+      pTarget.set(0);
+      return;
+    }
 
     /**
      * Scroll picks the card, it does not scrub the shuffle. The raw position

@@ -524,11 +524,12 @@ export function titleLines(project: Project): readonly string[] {
  * silently change which project the site opens on — that is a decision about
  * what to lead with, not a consequence of where a project sits in a ledger.
  *
- * Only the opening. Scrolling down to the deck still settles on the FIRST
- * project, so the stack you browse agrees with the row the ledger starts on;
- * this is what you land on, not where browsing begins.
+ * Set to the FIRST project in the list, and it should stay that way. When the
+ * two differed, scrolling down from the hero had to turn the deck from the
+ * card you landed on to the one the ledger starts on, and that turn read as
+ * the page skipping.
  */
-export const OPENING_SLUG = "airbnb-setup";
+export const OPENING_SLUG = "airbnb-reservations";
 
 /** Its index, or the first project if the slug ever stops matching. */
 export function openingIndex(): number {
