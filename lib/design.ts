@@ -844,17 +844,15 @@ export const DECK = {
     /** Depths over which the pull tapers to nothing. */
     pullReach: 3,
     /**
-     * How far the cards lean, alternating sides down the stack. Off.
+     * How far the cards lean, alternating sides down the stack.
      *
-     * It was five degrees, kept at the deck so the stack you browse matched
-     * the leaning stack you landed on. The landing screen is a fan now and
-     * wears no lean at all, so this was left doing nothing but splaying the
-     * browsing stack — cards poking out six to nine degrees either side of the
-     * front one, which read as sloppy. At zero the deck is back to the tidy
-     * stack it was before: the seeded jitter alone, about five degrees of
-     * spread from front to back. The token stays so it can be tuned back in.
+     * Five degrees, as it was before the fan. Taking it out left the deck
+     * too square and read as haphazard rather than tidy: the lean is part of
+     * what makes the stack look arranged. Measured against the pre-fan build,
+     * the cards sit at 0, 6.2, -8.05, 6.09 and -9.44 degrees from the front
+     * back, and they do again.
      */
-    lean: 0,
+    lean: 5,
     /**
      * The landing fan.
      *
@@ -877,7 +875,12 @@ export const DECK = {
      * zero however many projects there are. Six cards still resolve to exactly
      * the hand-written set.
      */
-    fan: { spread: 22, pivot: 360 },
+    /*
+     * PARKED — the landing screen is the tidy stack again, not the fan. The
+     * fan's geometry is kept; a spread above zero brings it back, and so does
+     * restoring the scatter cross-fade in `deckCard`.
+     */
+    fan: { spread: 0, pivot: 360 },
   },
   mobile: {
     intro: 300,
@@ -905,8 +908,8 @@ export const DECK = {
     pull: 0.22,
     pullRot: 0.5,
     pullReach: 3,
-    lean: 0,
-    fan: { spread: 12, pivot: 260 },
+    lean: 4,
+    fan: { spread: 0, pivot: 260 },
   },
 } as const;
 

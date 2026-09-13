@@ -355,29 +355,23 @@ export function deckCard(
     cfg.maxScrim * clamp01(d / Math.max(1, deepest));
 
   /**
-   * The lean the stack carries, alternating sides down it. Set to zero in
-   * DECK today: the landing screen is a fan, and a lean at the deck only
-   * splayed the stack you browse. Kept as a term so it can be tuned back in.
+   * The lean the stack carries, alternating sides down it. Not scaled by the
+   * intro: the stack you land on and the stack you browse lean the same way.
    */
   const lean = reduced ? 0 : cfg.lean * splay;
 
   /**
-   * How much of the stack's own scatter is showing: none on the landing
-   * screen, all of it once the deck has assembled.
+   * How much of the stack's own scatter is showing: all of it, in both states.
    *
-   * The fan and the scatter are two different accounts of how the stack is
-   * arranged, and running both at once gave neither. The fan turns every card
-   * about one pivot by an even step; the scatter steps each card up and to the
-   * right by its depth, leans it five degrees by turn, and jitters the result.
-   * Together the leans cancelled two cards onto the same angle, and the depth
-   * steps pushed the deeper half of the fan sideways — the gaps came out 38,
-   * 48, 69 and 68 pixels across an arc whose angles were exactly even.
-   *
-   * They cross-fade instead. Fanned, the cards share a pivot and nothing but
-   * the fan places them, which is what a hand of cards is. Assembled, the
-   * stack has its offsets and its lean back, exactly as before.
+   * While the landing screen was a fan this cross-faded — no scatter while
+   * fanned, all of it once assembled — because a fan and a jittered, leaning
+   * stack are two different arrangements and running both gave neither. The
+   * landing is the stack again, so the cross-fade is held open: the stack you
+   * land on and the stack you browse are the same arrangement, the first one
+   * simply larger. Set this back to `intro` along with a fan spread above zero
+   * to bring the fan back.
    */
-  const scatter = intro;
+  const scatter = 1;
 
   /**
    * Resting position for a card `d` places back in the stack.
