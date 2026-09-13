@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "portfolio-dev",
+      "runtimeExecutable": "/opt/homebrew/opt/node@22/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 3000
+    }
+  ]
+}
