@@ -304,24 +304,6 @@ export function deckCard(
   const { cx, cy } = deckOrigin(stage, intro);
   const k = size.k;
 
-  const jx = reduced ? 0 : signedJitter(i, 1, cfg.jitter[0]) * k;
-  const jy = reduced ? 0 : signedJitter(i, 2, cfg.jitter[1]) * k;
-
-  /**
-   * Rotation splays to alternating sides, with a seeded magnitude.
-   *
-   * Left to the raw seed the scatter is lopsided — it happens to give the two
-   * cards you actually see -1.1 and -2.9 degrees while burying +5.7 further
-   * back, so the whole deck reads as leaning one way. Forcing the sign to
-   * alternate and keeping the seeded size gives a stack that sits straight on
-   * and splays to both sides, which is the intended read, without going back
-   * to a uniform fan.
-   */
-  const splay = i % 2 === 0 ? -1 : 1;
-  const jr = reduced
-    ? 0
-    : Math.abs(signedJitter(i, 3, cfg.jitter[2])) * splay;
-
   const depth = cardDepth(i, count, p);
   const deepest = count - 1;
 
@@ -355,39 +337,64 @@ export function deckCard(
     cfg.maxScrim * clamp01(d / Math.max(1, deepest));
 
   /**
-   * The lean the stack carries, alternating sides down it. Not scaled by the
-   * intro: the stack you land on and the stack you browse lean the same way.
+   * How much of the stack's own scatter is showing: none while the landing
+   * screen is fanned, all of it once the deck has assembled. A fan and a
+   * jittered, leaning stack are two different arrangements, and running both
+   * at once gives neither.
    */
-  const lean = reduced ? 0 : cfg.lean * splay;
+  const scatter = intro;
 
   /**
-   * How much of the stack's own scatter is showing: all of it, in both states.
+   * Where the stack puts whichever card is sitting `s` places back.
    *
-   * While the landing screen was a fan this cross-faded — no scatter while
-   * fanned, all of it once assembled — because a fan and a jittered, leaning
-   * stack are two different arrangements and running both gave neither. The
-   * landing is the stack again, so the cross-fade is held open: the stack you
-   * land on and the stack you browse are the same arrangement, the first one
-   * simply larger. Set this back to `intro` along with a fan spread above zero
-   * to bring the fan back.
+   * The scatter belongs to the SLOT, not to the card. It used to be seeded by
+   * the card's own index, which only looks arranged at the first position:
+   * flip once and every card carries its offsets into a different slot, so
+   * the stack came out a different shape at every project — and with five
+   * cards the alternating lean broke where the last card wraps round next to
+   * the first, leaving two neighbours tilted the same way. Seeded by slot, the
+   * stack is the same shape whichever card is in front: the one the landing
+   * screen showed before the fan, at 0, 6.2, -8.05, 6.09 and -9.44 degrees
+   * from the front back.
+   *
+   * Rotation alternates sides with a seeded magnitude. Left to the raw seed
+   * the scatter is lopsided and the whole deck reads as leaning one way.
    */
-  const scatter = 1;
+  const slot = (s: number) => {
+    const splay = s % 2 === 0 ? -1 : 1;
+    const jx = reduced ? 0 : signedJitter(s, 1, cfg.jitter[0]) * k;
+    const jy = reduced ? 0 : signedJitter(s, 2, cfg.jitter[1]) * k;
+    const jr = reduced ? 0 : Math.abs(signedJitter(s, 3, cfg.jitter[2])) * splay;
+    const lean = reduced ? 0 : cfg.lean * splay;
+    return {
+      x: s * cfg.dx * k + jx * 0.4 * Math.min(1, s),
+      y: s * cfg.dy * k + jy * 0.55 * Math.min(1, s),
+      rotate: s === 0 ? 0 : jr * (0.3 + 0.12 * s) + lean,
+    };
+  };
 
   /**
    * Resting position for a card `d` places back in the stack.
    *
-   * The lean lives in here rather than being added at the one place a resting
-   * card is drawn. A card on its way to the back reads its landing rotation
-   * from this too, so leaving the lean out of it would have every shuffle
-   * finish a few degrees short and then drift the rest of the way once the
-   * card was counted as resting.
+   * Depth is fractional while the deck moves, so a card is read between the
+   * two slots either side of it and eases from one arrangement to the next
+   * rather than jumping. The lean lives in here too: a card on its way to the
+   * back reads its landing rotation from this, so leaving it out would have
+   * every shuffle finish a few degrees short and drift the rest of the way.
    */
-  const rest = (d: number) => ({
-    x: (d * cfg.dx * k + jx * 0.4 * Math.min(1, d)) * scatter,
-    y: (d * cfg.dy * k + jy * 0.55 * Math.min(1, d)) * scatter,
-    scale: 1 - d * cfg.dScale,
-    rotate: d < 0.02 ? 0 : (jr * (0.3 + 0.12 * d) + lean) * scatter,
-  });
+  const rest = (d: number) => {
+    const lo = Math.min(Math.floor(d), deepest);
+    const hi = Math.min(lo + 1, deepest);
+    const a = slot(lo);
+    const b = slot(hi);
+    const t = hi === lo ? 0 : d - lo;
+    return {
+      x: lerp(a.x, b.x, t) * scatter,
+      y: lerp(a.y, b.y, t) * scatter,
+      scale: 1 - d * cfg.dScale,
+      rotate: d < 0.02 ? 0 : lerp(a.rotate, b.rotate, t) * scatter,
+    };
+  };
 
   /**
    * The whole stack, larger before the deck assembles.

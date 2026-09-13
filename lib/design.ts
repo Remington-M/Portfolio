@@ -847,10 +847,10 @@ export const DECK = {
      * How far the cards lean, alternating sides down the stack.
      *
      * Five degrees, as it was before the fan. Taking it out left the deck
-     * too square and read as haphazard rather than tidy: the lean is part of
-     * what makes the stack look arranged. Measured against the pre-fan build,
-     * the cards sit at 0, 6.2, -8.05, 6.09 and -9.44 degrees from the front
-     * back, and they do again.
+     * too square: the lean is part of what makes the stack look arranged.
+     * The fan hides it on the landing screen, and it comes in as the deck
+     * assembles. Seeded by slot (see `deckCard`), the cards sit at 0, 6.2,
+     * -8.05, 6.09 and -9.44 degrees from the front back at every project.
      */
     lean: 5,
     /**
@@ -875,12 +875,7 @@ export const DECK = {
      * zero however many projects there are. Six cards still resolve to exactly
      * the hand-written set.
      */
-    /*
-     * PARKED — the landing screen is the tidy stack again, not the fan. The
-     * fan's geometry is kept; a spread above zero brings it back, and so does
-     * restoring the scatter cross-fade in `deckCard`.
-     */
-    fan: { spread: 0, pivot: 360 },
+    fan: { spread: 22, pivot: 360 },
   },
   mobile: {
     intro: 300,
@@ -909,7 +904,7 @@ export const DECK = {
     pullRot: 0.5,
     pullReach: 3,
     lean: 4,
-    fan: { spread: 0, pivot: 260 },
+    fan: { spread: 12, pivot: 260 },
   },
 } as const;
 
