@@ -844,17 +844,17 @@ export const DECK = {
     /** Depths over which the pull tapers to nothing. */
     pullReach: 3,
     /**
-     * How far the cards lean, alternating sides down the stack.
+     * How far the cards lean, alternating sides down the stack. Off.
      *
-     * It used to resolve away as the deck assembled — five degrees on the
-     * landing screen, nothing once you had scrolled — on the reasoning that
-     * the intro should be a rotation as well as a move. What that actually
-     * did was make the stack you browse a flatter, tidier thing than the one
-     * you land on: 15 degrees of spread across the cards became 5. The lean is
-     * the better read, so it is now simply what the stack is, in both states,
-     * and the intro is carried by the move and the scale instead.
+     * It was five degrees, kept at the deck so the stack you browse matched
+     * the leaning stack you landed on. The landing screen is a fan now and
+     * wears no lean at all, so this was left doing nothing but splaying the
+     * browsing stack — cards poking out six to nine degrees either side of the
+     * front one, which read as sloppy. At zero the deck is back to the tidy
+     * stack it was before: the seeded jitter alone, about five degrees of
+     * spread from front to back. The token stays so it can be tuned back in.
      */
-    lean: 5,
+    lean: 0,
     /**
      * The landing fan.
      *
@@ -905,7 +905,7 @@ export const DECK = {
     pull: 0.22,
     pullRot: 0.5,
     pullReach: 3,
-    lean: 4,
+    lean: 0,
     fan: { spread: 12, pivot: 260 },
   },
 } as const;

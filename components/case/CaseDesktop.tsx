@@ -156,6 +156,8 @@ export default function CaseDesktop({ project }: { project: Project }) {
         position: "fixed",
         inset: 0,
         overflowY: "auto",
+        // Same as the home page: no rubber-band dragging the header.
+        overscrollBehaviorY: "none",
         overflowX: "hidden",
         /**
          * One shot per gesture.

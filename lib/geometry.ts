@@ -355,11 +355,9 @@ export function deckCard(
     cfg.maxScrim * clamp01(d / Math.max(1, deepest));
 
   /**
-   * The lean the stack carries, alternating sides down it.
-   *
-   * Not scaled by the intro. It used to resolve away as the deck assembled,
-   * which made the stack you browse a flatter thing than the one you land on
-   * — 15 degrees of spread across the cards became 5.
+   * The lean the stack carries, alternating sides down it. Set to zero in
+   * DECK today: the landing screen is a fan, and a lean at the deck only
+   * splayed the stack you browse. Kept as a term so it can be tuned back in.
    */
   const lean = reduced ? 0 : cfg.lean * splay;
 

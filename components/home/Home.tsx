@@ -639,6 +639,14 @@ export default function Home() {
         position: "fixed",
         inset: 0,
         overflowY: "auto",
+        /**
+         * No rubber-band. The body already refuses to overscroll, but that
+         * setting does not reach a scroll container of its own, and this
+         * one bounced: pulling past the top dragged the header and the
+         * sentence down while the cards — drawn outside this container —
+         * stayed put, so the nav looked loose rather than fixed.
+         */
+        overscrollBehaviorY: "none",
         overflowX: "hidden",
         // `proximity` rather than `mandatory`: the deck is a scrubber, and
         // mandatory snapping fights a scroll that is mid-shuffle.

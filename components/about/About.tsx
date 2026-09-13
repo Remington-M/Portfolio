@@ -146,6 +146,8 @@ export default function About() {
           position: "fixed",
           inset: 0,
           overflowY: "auto",
+          // Same as the home page: no rubber-band dragging the header.
+          overscrollBehaviorY: "none",
           overflowX: "hidden",
           WebkitOverflowScrolling: "touch",
         }}
@@ -179,6 +181,7 @@ export default function About() {
         position: "fixed",
         inset: 0,
         overflowY: "auto",
+        overscrollBehaviorY: "none",
         overflowX: "hidden",
       }}
     >
