@@ -1,7 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useImperativeHandle, useRef, type ReactNode } from "react";
-import HeroPixels, { type HeroPixelsHandle } from "./HeroPixels";
+import { useEffect, useRef, type ReactNode } from "react";
 import { animate, motionValue, useAnimationFrame, useReducedMotion } from "motion/react";
 import { heroSpring, heroTune as T } from "@/lib/heroTuning";
 
@@ -26,19 +25,22 @@ import { heroSpring, heroTune as T } from "@/lib/heroTuning";
  * The words come in against it: as the cursor reaches a word's left edge
  * the word springs in from the right. The typed word does not — it was
  * typed.
+ *
+ * The particle layer — the ripple as the deck rises and the hover field —
+ * is parked, not deleted. `HeroPixels.tsx` and its settings in HERO_TYPE are
+ * still in the repo; nothing mounts them. Bringing it back means rendering
+ * <HeroPixels> as the last child of the outer span, handing it that span as
+ * `host`, and restoring the hover and ripple calls that fed it.
  */
 type Line = { top: number; bottom: number; left: number; right: number };
 type Word = { el: HTMLElement; line: number; left: number; started: boolean };
 
-export type HeroTypeHandle = {
-  /** Ripple the sentence from a point given as fractions of its box; y may
-   *  exceed 1 to start below it. `scale` multiplies the wave. */
-  ripple: (fx: number, fy: number) => void;
-};
-
-const HeroType = forwardRef<
-  HeroTypeHandle,
-  {
+export default function HeroType({
+  play,
+  typed,
+  words,
+  onDone,
+}: {
     /** False shows the resting sentence with no cursor. */
     play: boolean;
     /** The leading text, typed a character at a time. */
@@ -46,9 +48,7 @@ const HeroType = forwardRef<
     /** The rest, a node per word. Each arrives as the cursor reaches it. */
     words: ReactNode[];
     onDone: () => void;
-  }
->(function HeroType({ play, typed, words, onDone }, ref) {
-  const pixels = useRef<HeroPixelsHandle>(null);
+}) {
   const outer = useRef<HTMLSpanElement>(null);
   const box = useRef<HTMLSpanElement>(null);
   const cursor = useRef<HTMLSpanElement>(null);
@@ -339,42 +339,12 @@ const HeroType = forwardRef<
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run]);
 
-  useImperativeHandle(ref, () => ({
-    ripple: (fx, fy) => {
-      const el = outer.current;
-      if (!el || reduced) return;
-      const b = el.getBoundingClientRect();
-      pixels.current?.ripple(b.width * fx, b.height * fy);
-    },
-  }));
-
-  /* Hover: the pointer's field pushes the pixels apart around it. Not
-   * while the sequence is still typing. */
-  const onHover = (e: React.PointerEvent) => {
-    if (reduced || active.current) return;
-    const el = outer.current;
-    if (!el) return;
-    const b = el.getBoundingClientRect();
-    pixels.current?.hover(e.clientX - b.left, e.clientY - b.top);
-  };
-  /* Native, not React's synthetic leave: that one is built from over/out
-   * pairs and can miss a hand that leaves over the deck's own pointer
-   * surface. */
-  useEffect(() => {
-    const el = outer.current;
-    if (!el) return;
-    const leave = () => pixels.current?.leave();
-    el.addEventListener("pointerleave", leave);
-    return () => el.removeEventListener("pointerleave", leave);
-  }, []);
-
   const hidden = run ? { opacity: 0 } : undefined;
 
   return (
     <span
       ref={outer}
-      style={{ display: "block", position: "relative", pointerEvents: "auto" }}
-      onPointerMove={onHover}
+      style={{ display: "block", position: "relative" }}
     >
       <span
         ref={box}
@@ -409,20 +379,6 @@ const HeroType = forwardRef<
           display: run ? undefined : "none",
         }}
       />
-      <HeroPixels
-        ref={pixels}
-        host={outer}
-        baseline={() => baseline.current}
-        fragments={() => {
-          const el = box.current;
-          if (!el) return [];
-          return Array.from(el.querySelectorAll<HTMLElement>("[data-typed], [data-word]")).map(
-            (n) => ({ el: n, text: n.textContent ?? "" }),
-          );
-        }}
-      />
     </span>
   );
-});
-
-export default HeroType;
+}

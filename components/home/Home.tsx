@@ -13,7 +13,7 @@ import {
 import { useStage } from "@/components/media/stage";
 import Header from "@/components/Header";
 import Ledger from "./Ledger";
-import HeroType, { type HeroTypeHandle } from "./HeroType";
+import HeroType from "./HeroType";
 import HeroTunePanel from "./HeroTunePanel";
 import { heroSpring, heroTune, onHeroReplay } from "@/lib/heroTuning";
 import Ticks from "@/components/Ticks";
@@ -71,7 +71,6 @@ export default function Home() {
    * carry each card, so this is one eased value they all follow.
    */
   const [dealt, setDealt] = useState(() => deal.get() >= 1);
-  const heroRef = useRef<HeroTypeHandle>(null);
   const heroBox = useRef<HTMLHeadingElement>(null);
   /**
    * The sentence is typed in the middle of the screen and rises to its seat
@@ -108,10 +107,6 @@ export default function Home() {
       onComplete: () => setDealt(true),
     });
     animate(heroY, 0, heroSpring(heroTune.riseStiffness, heroTune.riseRatio, heroTune.riseMass));
-    setTimeout(
-      () => heroRef.current?.ripple(0.5, heroTune.rippleOriginY),
-      heroTune.rippleDelay * 1000,
-    );
   }, [deal, reduced, heroY]);
 
   /**
@@ -665,7 +660,6 @@ export default function Home() {
                 }}
               >
                 <HeroType
-                  ref={heroRef}
                   key={introKey}
                   play={playIntro || introKey > 0}
                   typed="Hey,"

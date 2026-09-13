@@ -154,28 +154,6 @@ export default function HeroTunePanel() {
         {S("cursor blink out", "blinkOut", 0, 4, 0.05, "s")}
         {S("cursor fade out", "fadeOut", 0, 2, 0.05, "s")}
       </Group>
-      <Group label="RIPPLE">
-        {S("cell (device px)", "ripplePixel", 1, 6, 1)}
-        {S("delay after deal", "rippleDelay", 0, 2, 0.05, "s")}
-        {S("origin below box", "rippleOriginY", 1, 4, 0.05, "×h")}
-        {S("speed", "rippleSpeed", 100, 3000, 10, "px/s")}
-        {S("wavelength", "rippleWavelength", 20, 500, 5, "px")}
-        {S("pulse width", "rippleWidth", 20, 800, 5, "px")}
-        {S("amplitude", "rippleAmplitude", 0, 40, 0.5, "px")}
-        {S("scatter", "rippleScatter", 0, 30, 0.5, "px")}
-        {S("dim at crest", "rippleDim", 0, 1, 0.02)}
-        {S("pulses", "ripplePulses", 1, 4, 1)}
-        {S("pulse gap", "ripplePulseGap", 0.05, 1.5, 0.01, "s")}
-        {S("pulse decay", "ripplePulseDecay", 0.2, 1, 0.02, "×")}
-      </Group>
-      <Group label="HOVER · PARTICLES">
-        {S("radius", "hoverRadius", 10, 300, 1, "px")}
-        {S("throw per px/s", "hoverForce", 0, 6, 0.05)}
-        {S("outward vs along", "hoverOutward", 0, 1, 0.02)}
-        {S("speed cap", "hoverMaxSpeed", 200, 6000, 50, "px/s")}
-        {S("spring stiffness", "hoverStiffness", 5, 400, 1)}
-        {S("spring damping ratio", "hoverRatio", 0.05, 2, 0.01)}
-      </Group>
     </div>
   );
 }

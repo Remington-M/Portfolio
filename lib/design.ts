@@ -505,6 +505,10 @@ export const HERO_TYPE = {
   holdIn: 1.0,
   rise: { stiffness: 60, ratio: 1, mass: 1 },
   /**
+   * PARKED — nothing reads `ripple` or `hover` at the moment. The particle
+   * layer they tune (`components/home/HeroPixels.tsx`) is kept in the repo
+   * but no longer mounted on the site; see the note in HeroType.tsx.
+   *
    * The ripple. As the fan rises a wave goes out from it through the
    * sentence, which for the duration is made of tiny cells — the text
    * re-drawn onto a canvas at its own positions and sampled into a grid —
