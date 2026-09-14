@@ -2,14 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { motion, useMotionValueEvent, useTransform, useReducedMotion } from "motion/react";
+import { useRouter } from "next/navigation";
+import { motion, useMotionValueEvent, useTransform, useReducedMotion, type MotionValue } from "motion/react";
 import { useStage } from "@/components/media/stage";
 import Header from "@/components/Header";
 import Ticks from "@/components/Ticks";
 import {
   CASE,
   HOUSE,
-  HOUSE_CSS,
   SHADOW,
   SPRING,
   TYPE,
@@ -23,6 +23,7 @@ import {
   returnProgress,
   stageY,
 } from "@/lib/geometry";
+import { heroSpring } from "@/lib/heroTuning";
 import { clamp, clamp01 } from "@/lib/spring";
 import { titleLines, type Project } from "@/lib/projects";
 
@@ -35,12 +36,23 @@ import { titleLines, type Project } from "@/lib/projects";
  * titles, the progress ticks and the return-to-deck ending.
  */
 export default function CaseDesktop({ project }: { project: Project }) {
-  const { cp, stage } = useStage();
+  const { cp, stage, viewer } = useStage();
   const reduced = useReducedMotion() ?? false;
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Shot 01 is the intro screen; the project's own shots follow.
   const shotCount = project.shots.length + 1;
+  const router = useRouter();
+  /** Set by the back link: fade the column, then leave. */
+  const [leaving, setLeaving] = useState(false);
+  /* The route changes on a clock matched to the fade, not on the fade's
+   * completion callback: a background tab suspends animation frames and a
+   * navigation that waited on one would never happen. */
+  useEffect(() => {
+    if (!leaving) return;
+    const t = setTimeout(() => router.push("/"), reduced ? 0 : CASE.leave.fade);
+    return () => clearTimeout(t);
+  }, [leaving, router, reduced]);
   const [active, setActive] = useState(() =>
     clamp(Math.round(cp.get()), 0, project.shots.length),
   );
@@ -118,7 +130,6 @@ export default function CaseDesktop({ project }: { project: Project }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [cp, jump, shotCount]);
 
-  const kicker = `${project.title} · ${project.yearLong ?? project.year}`.toUpperCase();
   const lines = titleLines(project);
 
   /**
@@ -134,18 +145,37 @@ export default function CaseDesktop({ project }: { project: Project }) {
    * `style` — these are laid out by the column they sit in, and putting a
    * wrapper around each one would change that layout to animate it.
    */
-  const rise = (step: number) =>
-    reduced
-      ? {}
-      : {
-          initial: { opacity: 0, y: CASE.enter.rise * stage.s },
-          animate: { opacity: 1, y: 0 },
-          transition: {
-            duration: CASE.enter.ms / 1000,
-            delay: (CASE.enter.lead + step * CASE.enter.stagger) / 1000,
-            ease: [...HOUSE] as [number, number, number, number],
-          },
-        };
+  const rise = (step: number) => {
+    if (reduced) return {};
+    const delay = (CASE.enter.lead + step * CASE.enter.stagger) / 1000;
+    return {
+      initial: { opacity: 0, y: CASE.enter.rise * stage.s },
+      animate: { opacity: 1, y: 0 },
+      transition: {
+        y: { ...heroSpring(CASE.enter.stiffness, CASE.enter.ratio, CASE.enter.mass), delay },
+        opacity: { duration: CASE.enter.fade / 1000, ease: "linear" as const, delay },
+      },
+    };
+  };
+
+  /**
+   * The arrows sit off the viewer's LIVE box, published by the layer from
+   * the card's own springs, so they move exactly as the container does —
+   * the same overshoot, the same settle — rather than on a spring of their
+   * own tuned to look like it. On the intro screen the viewer runs out to
+   * the right rail, so the next arrow is held at the edge of the stage
+   * instead, in the margin; the previous arrow has nowhere to go there and
+   * is not shown.
+   */
+  const arrowSize = 56 * stage.sx;
+  const arrowGap = CASE.arrowGap * stage.sx;
+  const arrowLeftX = useTransform(viewer.x, (x: number) => x - arrowGap - arrowSize);
+  const arrowRightX = useTransform([viewer.x, viewer.w], ([x, w]) =>
+    Math.min((x as number) + (w as number) + arrowGap, stage.w - arrowSize - 4 * stage.sx),
+  );
+  const arrowTopY = useTransform([viewer.y, viewer.h], ([y, h]) =>
+    (y as number) + (h as number) / 2 - arrowSize / 2,
+  );
 
   return (
     <div
@@ -234,7 +264,8 @@ export default function CaseDesktop({ project }: { project: Project }) {
               margin: "0 auto",
             }}
           >
-            <Header variant="case" kicker={kicker} />
+            {/* No project name up here: the headline below says it. */}
+            <Header variant="case" onBack={() => setLeaving(true)} />
 
             {/*
               Screen 01 — intro.
@@ -243,6 +274,17 @@ export default function CaseDesktop({ project }: { project: Project }) {
               each one. Without it the column mounts once and every project
               after the first would find its type already in place.
             */}
+            <motion.div
+              /**
+               * The way back: the column fades out, linear and quick, and
+               * only then does the route change and the card fly home. A
+               * stacking context of its own so it stays above the viewer
+               * while it is translucent.
+               */
+              animate={{ opacity: leaving ? 0 : 1 }}
+              transition={{ duration: CASE.leave.fade / 1000, ease: "linear" }}
+              style={{ position: "relative", zIndex: 54 }}
+            >
             <motion.div
               key={project.slug}
               style={{
@@ -291,22 +333,22 @@ export default function CaseDesktop({ project }: { project: Project }) {
                 the centre is the difference between a rule appearing and a
                 rule being drawn.
               */}
-              <motion.div
-                aria-hidden
-                initial={reduced ? false : { scaleX: 0 }}
-                animate={{ scaleX: 1 }}
-                transition={{
-                  duration: CASE.enter.ruleMs / 1000,
-                  delay: (CASE.enter.lead + 2 * CASE.enter.stagger) / 1000,
-                  ease: [...HOUSE] as [number, number, number, number],
-                }}
-                style={{
-                  height: 1,
-                  marginTop: 34 * ts,
-                  background: "var(--rule)",
-                  transformOrigin: "50% 50%",
-                }}
-              />
+              <motion.div {...rise(2)} aria-hidden style={{ marginTop: 34 * ts }}>
+                <motion.div
+                  initial={reduced ? false : { scaleX: 0 }}
+                  animate={{ scaleX: 1 }}
+                  transition={{
+                    duration: CASE.enter.ruleMs / 1000,
+                    delay: (CASE.enter.lead + 2 * CASE.enter.stagger) / 1000,
+                    ease: [...HOUSE] as [number, number, number, number],
+                  }}
+                  style={{
+                    height: 1,
+                    background: "var(--rule)",
+                    transformOrigin: "50% 50%",
+                  }}
+                />
+              </motion.div>
               <motion.dl
                 {...rise(3)}
                 style={{
@@ -333,6 +375,7 @@ export default function CaseDesktop({ project }: { project: Project }) {
                   <dd style={{ margin: 0 }}>{project.collaborators}</dd>
                 </div>
               </motion.dl>
+            </motion.div>
             </motion.div>
 
             {/* Ghost cards fanning out behind the frame as it becomes a card. */}
@@ -430,12 +473,16 @@ export default function CaseDesktop({ project }: { project: Project }) {
                 side="left"
                 label="Previous shot"
                 disabled={active === 0}
+                x={arrowLeftX}
+                y={arrowTopY}
                 onClick={() => jump(Math.max(0, active - 1))}
               />
               <StepArrow
                 side="right"
                 label="Next shot"
                 disabled={active >= shotCount - 1}
+                x={arrowRightX}
+                y={arrowTopY}
                 onClick={() => jump(Math.min(shotCount - 1, active + 1))}
               />
             </motion.div>
@@ -486,11 +533,16 @@ function StepArrow({
   side,
   label,
   disabled,
+  x,
+  y,
   onClick,
 }: {
   side: "left" | "right";
   label: string;
   disabled: boolean;
+  /** Top-left of the hit area, stage px, live from the viewer's box. */
+  x: MotionValue<number>;
+  y: MotionValue<number>;
   onClick: () => void;
 }) {
   const { stage } = useStage();
@@ -507,18 +559,22 @@ function StepArrow({
   const [hover, setHover] = useState(false);
 
   return (
-    <button
+    <motion.button
       type="button"
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
+      aria-hidden={disabled || undefined}
       onPointerEnter={() => setHover(true)}
       onPointerLeave={() => setHover(false)}
+      initial={false}
+      // Gone when there is nowhere to go; faint at rest, definite on approach.
+      animate={{ opacity: disabled ? 0 : hover ? 0.8 : 0.34 }}
+      transition={{ opacity: { duration: 0.3, ease: [...HOUSE] as [number, number, number, number] } }}
       style={{
         position: "absolute",
-        [side]: CASE.arrowInset * s,
-        top: "50%",
-        transform: "translateY(-50%)",
+        left: x,
+        top: y,
         zIndex: 62,
         width: 56 * s,
         height: 56 * s,
@@ -529,9 +585,7 @@ function StepArrow({
         background: "none",
         color: "var(--ink)",
         cursor: disabled ? "default" : "pointer",
-        // Faint at rest, definite on approach, gone when there is nowhere to go.
-        opacity: disabled ? 0.12 : hover ? 0.8 : 0.34,
-        transition: `opacity .3s ${HOUSE_CSS}`,
+        pointerEvents: disabled ? "none" : "auto",
         padding: 0,
       }}
     >
@@ -550,7 +604,7 @@ function StepArrow({
           strokeLinejoin="round"
         />
       </svg>
-    </button>
+    </motion.button>
   );
 }
 

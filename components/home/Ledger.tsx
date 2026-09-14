@@ -1,8 +1,10 @@
 "use client";
 
-import { HOUSE_CSS, TYPE, type as typeStyle } from "@/lib/design";
+import { motion, useReducedMotion } from "motion/react";
+import { HOUSE_CSS, LEDGER_IN, TYPE, type as typeStyle } from "@/lib/design";
 import { projects } from "@/lib/projects";
 import { useStage } from "@/components/media/stage";
+import { heroSpring } from "@/lib/heroTuning";
 
 /**
  * Desktop ledger. The cards carry no titles — this names the project.
@@ -14,11 +16,20 @@ import { useStage } from "@/components/media/stage";
 export default function Ledger({
   front,
   onJump,
+  arrived = true,
+  entrance = "rise",
 }: {
   front: number;
   onJump: (index: number) => void;
+  /** Whether the deck has arrived: the rows rise into place when it has,
+   *  each a beat after the one above, and drop back when it has not. */
+  arrived?: boolean;
+  /** "rise" on the way down from the hero; "fade" coming back from a
+   *  project, where the deck is already in place and the rows just appear. */
+  entrance?: "rise" | "fade";
 }) {
   const ts = useStage().stage.ts;
+  const reduced = useReducedMotion() ?? false;
   return (
     <ol
       style={{
@@ -31,7 +42,25 @@ export default function Ledger({
       {projects.map((project, i) => {
         const on = i === front;
         return (
-          <li key={project.slug}>
+          <motion.li
+            key={project.slug}
+            initial={entrance === "fade" && !reduced ? { opacity: 0, y: 0 } : false}
+            animate={entrance === "fade" ? { opacity: 1, y: 0 } : {
+              y: arrived || reduced ? 0 : LEDGER_IN.rise * ts,
+              opacity: arrived || reduced ? 1 : 0,
+            }}
+            transition={entrance === "fade" ? { opacity: { duration: LEDGER_IN.returnFade / 1000, ease: "linear" } } : {
+              y: {
+                ...heroSpring(LEDGER_IN.stiffness, LEDGER_IN.ratio, LEDGER_IN.mass),
+                delay: arrived ? LEDGER_IN.delay + i * LEDGER_IN.stagger : 0,
+              },
+              opacity: {
+                duration: LEDGER_IN.fade,
+                ease: "linear",
+                delay: arrived ? LEDGER_IN.delay + i * LEDGER_IN.stagger : 0,
+              },
+            }}
+          >
             <button
               type="button"
               onClick={() => onJump(i)}
@@ -76,7 +105,7 @@ export default function Ledger({
                 {project.year}
               </span>
             </button>
-          </li>
+          </motion.li>
         );
       })}
     </ol>

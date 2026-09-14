@@ -8,9 +8,9 @@ import {
   SCALE,
   frameBox,
   type ShotKind,
-  HERO_INTRO,
 } from "./design";
 import { clamp, clamp01, lerp, smoothstep } from "./spring";
+import { heroTune } from "./heroTuning";
 
 /** Everything the media layer needs to paint one card, in stage pixels. */
 export type Geo = {
@@ -104,19 +104,6 @@ export function makeStage(vw: number, vh: number, mobile: boolean): Stage {
  */
 export function stageY(stage: Stage, authored: number): number {
   return stage.top + authored * stage.s;
-}
-
-/**
- * Seeded scatter. Must be deterministic — the design calls for the same
- * scatter on every load, not a random one.
- */
-function jitter(i: number, k: number): number {
-  const v = Math.sin((i + 1) * 12.9898 + k * 78.233) * 43758.5453;
-  return v - Math.floor(v);
-}
-
-function signedJitter(i: number, k: number, amplitude: number): number {
-  return (jitter(i, k) * 2 - 1) * amplitude;
 }
 
 /* ------------------------------------------------------------------ *
@@ -261,9 +248,6 @@ function fanAngle(depth: number, deepest: number, spread: number): number {
  * depth passes the back of the stack swings out to the right, rotates in Y and
  * tucks in behind. That arc is the signature motion of the site.
  */
-/** Cubic ease-out, for a rise that lands softly. */
-const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
-
 export function deckCard(
   i: number,
   count: number,
@@ -295,9 +279,14 @@ export function deckCard(
   arcScale = 1,
   /**
    * How far the landing deck has been dealt in, 0–1. Below 1 the cards sit
-   * under the stage and the fan is closed; see HERO_INTRO.deal.
+   * under the stage; see HERO_INTRO.deal.
    */
   deal = 1,
+  /**
+   * How far open this card's fan is, 0 closed to 1 open, on its own spring
+   * in the layer. Past 1 is an overshoot and is honoured.
+   */
+  spread = 1,
 ): Geo {
   const cfg = stage.mobile ? DECK.mobile : DECK.desktop;
   const size = deckCardSize(stage);
@@ -347,30 +336,15 @@ export function deckCard(
   /**
    * Where the stack puts whichever card is sitting `s` places back.
    *
-   * The scatter belongs to the SLOT, not to the card. It used to be seeded by
-   * the card's own index, which only looks arranged at the first position:
-   * flip once and every card carries its offsets into a different slot, so
-   * the stack came out a different shape at every project — and with five
-   * cards the alternating lean broke where the last card wraps round next to
-   * the first, leaving two neighbours tilted the same way. Seeded by slot, the
-   * stack is the same shape whichever card is in front: the one the landing
-   * screen showed before the fan, at 0, 6.2, -8.05, 6.09 and -9.44 degrees
-   * from the front back.
-   *
-   * Rotation alternates sides with a seeded magnitude. Left to the raw seed
-   * the scatter is lopsided and the whole deck reads as leaning one way.
+   * The arrangement belongs to the SLOT, not to the card, so the stack is
+   * the same shape whichever project is in front — seeded by card index it
+   * came out a different accident at every position. The slots themselves
+   * are authored by hand in `DECK.*.stack`; see the note there.
    */
   const slot = (s: number) => {
-    const splay = s % 2 === 0 ? -1 : 1;
-    const jx = reduced ? 0 : signedJitter(s, 1, cfg.jitter[0]) * k;
-    const jy = reduced ? 0 : signedJitter(s, 2, cfg.jitter[1]) * k;
-    const jr = reduced ? 0 : Math.abs(signedJitter(s, 3, cfg.jitter[2])) * splay;
-    const lean = reduced ? 0 : cfg.lean * splay;
-    return {
-      x: s * cfg.dx * k + jx * 0.4 * Math.min(1, s),
-      y: s * cfg.dy * k + jy * 0.55 * Math.min(1, s),
-      rotate: s === 0 ? 0 : jr * (0.3 + 0.12 * s) + lean,
-    };
+    if (s === 0 || reduced) return { x: 0, y: 0, rotate: 0, scale: 1 - s * 0.015 };
+    const st = cfg.stack[Math.min(s, cfg.stack.length) - 1];
+    return { x: st.x * k, y: st.y * k, rotate: st.rotate, scale: st.scale };
   };
 
   /**
@@ -391,7 +365,7 @@ export function deckCard(
     return {
       x: lerp(a.x, b.x, t) * scatter,
       y: lerp(a.y, b.y, t) * scatter,
-      scale: 1 - d * cfg.dScale,
+      scale: lerp(a.scale, b.scale, t),
       rotate: d < 0.02 ? 0 : lerp(a.rotate, b.rotate, t) * scatter,
     };
   };
@@ -428,12 +402,18 @@ export function deckCard(
    */
   /**
    * The deal: cards rise from below the stage as one stack, and the fan
-   * opens over the back half of the rise so they arrive and then sprawl.
+   * opens over the back part of the rise so they arrive and then sprawl.
+   *
+   * `deal` is driven by a spring, so its shape IS the rise — no curve is
+   * put on top of it, and it is not clamped: an underdamped spring carries
+   * it past 1 and the cards overshoot their seats and settle back, which is
+   * the point of a spring. The spread is clamped; a fan cannot open past
+   * open. The amplitudes come from the live tuning so the panel can move
+   * them; at rest those are the authored HERO_INTRO.deal values.
    */
-  const dealRise = 1 - easeOut(clamp01(deal / 0.85));
-  const dealSpread = smoothstep(
-    clamp01((deal - HERO_INTRO.deal.spreadFrom) / (1 - HERO_INTRO.deal.spreadFrom)),
-  );
+  const D = heroTune;
+  const dealRise = 1 - deal;
+  const dealSpread = spread;
   const fanAt = (d: number) => {
     const deg = reduced
       ? 0
@@ -513,7 +493,7 @@ export function deckCard(
       cy -
       size.height / 2 +
       y +
-      dealRise * size.height * HERO_INTRO.deal.riseHeights,
+      dealRise * size.height * D.dealRiseHeights,
     w: size.width,
     h: size.height,
     radius: size.radius,

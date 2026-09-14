@@ -52,6 +52,14 @@ export type StageState = {
    * find the cards below the stage.
    */
   deal: MotionValue<number>;
+  /**
+   * The viewer's box on a project page, in stage px, written by the layer
+   * every frame from the card's own springs. Anything that has to sit
+   * beside the viewer — the step arrows — reads these and so moves exactly
+   * with it, overshoot and all, rather than on a spring of its own that
+   * could only ever approximate the container's.
+   */
+  viewer: { x: MotionValue<number>; y: MotionValue<number>; w: MotionValue<number>; h: MotionValue<number> };
   /** Project page shot position. */
   cp: MotionValue<number>;
   /** Index of the project whose card is the shared element, or -1. */
@@ -126,6 +134,7 @@ export function StageProvider({ children }: { children: ReactNode }) {
       p: motionValue(openingIndex()),
       pTarget: motionValue(openingIndex()),
       pi: motionValue(0),
+      viewer: { x: motionValue(0), y: motionValue(0), w: motionValue(0), h: motionValue(0) },
       deal: motionValue((pathname ?? "/").startsWith("/work/") ? 1 : 0),
       cp: motionValue(0),
       selected: motionValue(-1),

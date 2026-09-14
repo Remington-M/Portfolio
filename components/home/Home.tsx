@@ -15,16 +15,15 @@ import Header from "@/components/Header";
 import Ledger from "./Ledger";
 import HeroType from "./HeroType";
 import HeroTunePanel from "./HeroTunePanel";
-import { heroSpring, heroTune, onHeroReplay } from "@/lib/heroTuning";
+import { heroRead, heroSpring, heroTune, onHeroReplay } from "@/lib/heroTuning";
 import Ticks from "@/components/Ticks";
 import { projects } from "@/lib/projects";
 import {
   DECK,
   DECK_MOTION,
-  HERO_INTRO,
-  HOUSE,
   HERO_EXIT,
   HOME_IDLE,
+  LEDGER_IN,
   TYPE,
   type as typeStyle,
 } from "@/lib/design";
@@ -65,6 +64,8 @@ export default function Home() {
    * project there is a deck to restore and no hero moment to stage.
    */
   const [playIntro] = useState(() => restoreDeck() === null && deal.get() < 1);
+  /** Back from a project: the deck is restored, and the ledger fades in. */
+  const [returned] = useState(() => restoreDeck() !== null);
 
   /**
    * Deal the cards in once the sentence has arrived. The layer's own springs
@@ -77,20 +78,8 @@ export default function Home() {
    * as the cards deal in. This is that lift, in px, on top of the seat.
    */
   const heroY = useMotionValue(0);
-  /**
-   * The tuning panel can ask for the sequence again: the cards go back
-   * under the stage and the sentence remounts and plays from the top.
-   */
+  /** Bumped by a replay from the tuning panel; remounts the sentence. */
   const [introKey, setIntroKey] = useState(0);
-  useEffect(
-    () =>
-      onHeroReplay(() => {
-        deal.set(0);
-        setDealt(false);
-        setIntroKey((k) => k + 1);
-      }),
-    [deal],
-  );
   const dealIn = useCallback(() => {
     if (deal.get() >= 1) {
       setDealt(true);
@@ -102,11 +91,14 @@ export default function Home() {
       return;
     }
     animate(deal, 1, {
-      duration: HERO_INTRO.deal.duration,
-      ease: HOUSE,
+      ...heroSpring(heroTune.dealStiffness, heroTune.dealRatio, heroTune.dealMass),
       onComplete: () => setDealt(true),
     });
-    animate(heroY, 0, heroSpring(heroTune.riseStiffness, heroTune.riseRatio, heroTune.riseMass));
+    // The sentence sets off this long after the cards.
+    animate(heroY, 0, {
+      ...heroSpring(heroTune.riseStiffness, heroTune.riseRatio, heroTune.riseMass),
+      delay: heroTune.riseDelay,
+    });
   }, [deal, reduced, heroY]);
 
   /**
@@ -129,6 +121,8 @@ export default function Home() {
    * many cards it has turned through so far.
    */
   const lastScrollAt = useRef(0);
+  /** Size of the previous scroll event, for telling a push from coasting. */
+  const lastDelta = useRef(0);
   const turnedThisScroll = useRef(0);
   /** Where the scroller sat on the previous event, to find where a gesture began. */
   const lastTop = useRef(0);
@@ -189,6 +183,8 @@ export default function Home() {
    * still running when the stack arrives.
    */
   const owed = useRef(false);
+  /** Pending settle of a scroll that stopped inside the intro. */
+  const introSettle = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /**
    * Put the deck back on the first project, going the short way round.
@@ -212,15 +208,73 @@ export default function Home() {
     pTarget.set(0);
   }, [pTarget, n, rebaseDeck]);
 
+  /**
+   * The tuning panel can ask for the sequence again: the cards go back
+   * under the stage, the deck turns back to the opening card — the idle
+   * deal may have turned it since — and the sentence remounts and plays
+   * from the top, with the idle deal starting over once it has landed.
+   */
+  useEffect(
+    () =>
+      onHeroReplay(() => {
+        deal.set(0);
+        setDealt(false);
+        dealBackToFirst();
+        idling.current = true;
+        setIdle(true);
+        owed.current = false;
+        setIntroKey((k) => k + 1);
+      }),
+    [deal, dealBackToFirst],
+  );
+
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
+    const top = el.scrollTop;
+    /**
+     * The intro is read from the scroll position on EVERY event, before
+     * anything can return early. It used to sit below the gesture check, so
+     * a scroll processed while the layer was driving the deck left it where
+     * the last ordinary event had put it — a fraction short of 1 — and the
+     * deck sat stranded a little down and to the left of its seat, slightly
+     * too big, until the next plain scroll. Nothing about a gesture changes
+     * where the intro is: it is a function of the scroller alone.
+     */
+    pi.set(Math.min(1, top / cfg.intro));
+
+    /**
+     * The intro is not a place to stop.
+     *
+     * A wheel flick carries through it, but a trackpad gesture can end
+     * anywhere, and a scroller resting half way through the intro draws the
+     * stack half way along its travel — down and to the left of its seat and
+     * too big — and holds it there, which read as the deck stuck in a broken
+     * state. Every scroll inside the intro re-arms a short timer; when the
+     * scrolling stops with the page still inside, it is finished for the
+     * user: on to the first project past `settleAt`, back to the top before
+     * it. A smooth scroll fires scroll events of its own, and those re-arm
+     * the timer too, so it never fires against a scroll still in motion.
+     */
+    if (introSettle.current) clearTimeout(introSettle.current);
+    introSettle.current = null;
+    if (top > 0 && top < deckTop(0) - 1 && !deckDriven.current) {
+      introSettle.current = setTimeout(() => {
+        introSettle.current = null;
+        const el2 = scrollRef.current;
+        if (!el2 || deckDriven.current) return;
+        const t = el2.scrollTop;
+        if (t <= 0 || t >= deckTop(0) - 1) return;
+        el2.scrollTo({
+          top: t >= cfg.intro * HOME_IDLE.settleAt ? deckTop(0) : 0,
+          behavior: reduced ? "auto" : "smooth",
+        });
+      }, DECK_MOTION.gestureGap);
+    }
+
     // A gesture owns the deck while it runs. Writing `p` from scroll here would
     // fight the drag and snap the card back on the next scroll event.
     if (deckDriven.current) return;
-
-    const top = el.scrollTop;
-    pi.set(Math.min(1, top / cfg.intro));
 
     /**
      * A gesture is a run of scroll events with no real gap in it — one flick
@@ -237,10 +291,37 @@ export default function Home() {
      * a hard flick's first event can already be deep in the deck.
      */
     const now = performance.now();
+    /**
+     * How far this event moved the scroller. While the scroller is pinned
+     * each event moves it from the pin, so this is the event's own size
+     * either way.
+     */
+    const delta = Math.abs(top - lastTop.current);
     if (now - lastScrollAt.current > DECK_MOTION.gestureGap) {
       turnedThisScroll.current = 0;
       fromHero.current = lastTop.current < deckTop(0) - 1;
+    } else if (
+      turnedThisScroll.current >= DECK_MOTION.maxPerGesture &&
+      Math.abs(p.get() - pTarget.get()) < 0.02 &&
+      delta > lastDelta.current * DECK_MOTION.pushRatio
+    ) {
+      /**
+       * The deck has landed on the card this gesture turned to, and the
+       * scrolling is not just coasting — the events are getting BIGGER,
+       * which momentum never does; a finger has pushed again. That is the
+       * next card being asked for. A continuous trackpad scroll never
+       * pauses long enough to count as a new gesture, so without this it
+       * only ever turned one card and then went dead against the pin;
+       * resetting on landing alone let a flick's coasting take a second
+       * card the moment the first had settled.
+       */
+      turnedThisScroll.current = 0;
     }
+    lastDelta.current = delta;
+    heroRead.events += 1;
+    heroRead.scrollTop = top;
+    heroRead.scrollMax = el.scrollHeight - el.clientHeight;
+    heroRead.deck = p.get();
     lastScrollAt.current = now;
     lastTop.current = top;
 
@@ -267,6 +348,13 @@ export default function Home() {
       idling.current = false;
       setIdle(false);
       owed.current = true;
+      /**
+       * The deck is now somewhere worth coming back to. Remembered on every
+       * change of position as well, below — but a deck that never turned
+       * never changed, and opening its front card straight away then landed
+       * the way back on the hero and the fold instead of on the deck.
+       */
+      rememberDeck(pTarget.get());
       // Scrolling into the deck before it has finished dealing: the cards are
       // wanted now, and their own springs smooth the rest of the way.
       if (deal.get() < 1) deal.set(1);
@@ -374,13 +462,18 @@ export default function Home() {
      * which absorbs the rest of the momentum. Letting it coast on would leave
      * the scroll position pointing at a card the deck never reached.
      */
-    if (turnedThisScroll.current >= DECK_MOTION.maxPerGesture) {
+    heroRead.pinned = turnedThisScroll.current >= DECK_MOTION.maxPerGesture;
+    if (heroRead.pinned) {
       const pin = deckTop(committed);
       if (Math.abs(el.scrollTop - pin) > 1) el.scrollTop = pin;
     }
+    heroRead.raw = raw;
+    heroRead.committed = committed;
+    heroRead.turned = turnedThisScroll.current;
 
     pTarget.set(committed);
   }, [
+    p,
     pTarget,
     pi,
     deal,
@@ -393,7 +486,14 @@ export default function Home() {
     rebaseDeck,
     deckTop,
     dealBackToFirst,
+    reduced,
   ]);
+  useEffect(
+    () => () => {
+      if (introSettle.current) clearTimeout(introSettle.current);
+    },
+    [],
+  );
 
   /**
    * Let a fling put the scroller where the card landed.
@@ -424,9 +524,12 @@ export default function Home() {
         pTarget.set(value);
       }
       el.scrollTop = deckTop(value);
+      /* Every deck position is past the intro, and a write that does not
+       * move the scroller fires no event, so say so here as well. */
+      pi.set(1);
     });
     return () => registerDeckScroll(null);
-  }, [registerDeckScroll, deckTop, n, rebaseDeck, pTarget]);
+  }, [registerDeckScroll, deckTop, n, rebaseDeck, pTarget, pi]);
 
   useMotionValueEvent(p, "change", (v) => {
     // Remember on every change rather than on click, so leaving by the browser
@@ -488,6 +591,16 @@ export default function Home() {
       if (document.visibilityState !== "visible") return;
       // A hand on the deck owns it.
       if (deckDriven.current) return;
+      /**
+       * Only on the landing screen, read from the ref, not the state.
+       *
+       * The state is what tears this timer down when the page is scrolled,
+       * but that happens on React's next commit, and a tick already due can
+       * run in the gap between the scroll event and that commit — one card
+       * turned, on the deck, with no hand on it. The ref is written in the
+       * scroll handler itself, so it is never behind.
+       */
+      if (!idling.current) return;
       const next = pTarget.get() + 1;
       if (next >= n) {
         rebaseDeck(1);
@@ -626,6 +739,15 @@ export default function Home() {
     reduced ? 1 : 1 - (1 - HERO_EXIT.scale) * clamp01(v * HERO_EXIT.fade),
   );
   const chromeOpacity = useTransform(pi, (v) => clamp01((v - 0.45) * 2.2));
+  /**
+   * Whether the deck has arrived, for the ledger's rows to rise to. Cued
+   * where the ledger starts to show, released lower on the way back up, so
+   * a scroll hovering on the threshold does not flutter the rows.
+   */
+  const [ledgerIn, setLedgerIn] = useState(() => pi.get() >= LEDGER_IN.at);
+  useMotionValueEvent(pi, "change", (v) => {
+    setLedgerIn((was) => (was ? v >= LEDGER_IN.out : v >= LEDGER_IN.at));
+  });
 
   const s = stage.s;
   const ts = stage.ts;
@@ -781,7 +903,7 @@ export default function Home() {
                   opacity: chromeOpacity,
                 }}
               >
-                <Ledger front={front} onJump={jumpTo} />
+                <Ledger front={front} onJump={jumpTo} arrived={ledgerIn} entrance={returned ? "fade" : "rise"} />
               </motion.div>
             )}
           </div>

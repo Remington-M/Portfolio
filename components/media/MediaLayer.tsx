@@ -42,6 +42,7 @@ import {
   type Geo,
 } from "@/lib/geometry";
 import { derived as tuned, subscribeTuning, tuning } from "@/lib/tuning";
+import { heroLight, heroTune } from "@/lib/heroTuning";
 import {
   clamp,
   clamp01,
@@ -282,6 +283,7 @@ export default function MediaLayer() {
     pTarget,
     pi,
     deal,
+    viewer,
     cp,
     selected,
     mode,
@@ -361,6 +363,19 @@ export default function MediaLayer() {
    * at once without interfering.
    */
   const arcClock = useRef(projects.map(() => spring(0)));
+  /**
+   * Each card's own rise on the deal. The stage's `deal` value is the
+   * front card's spring and says whether the deal is on; these follow it
+   * up, each a little softer than the one in front (HERO_INTRO.deal.falloff),
+   * so the stack rises from the front back rather than as one block.
+   */
+  const dealClock = useRef(projects.map(() => spring(0)));
+  const dealSeen = useRef(false);
+  /** Each card's fan, opening on its own spring a beat after the rise. */
+  const fanClock = useRef(projects.map(() => spring(0)));
+  /** When the deal began, on the frame clock in seconds; -1 while it is
+   *  not running. */
+  const dealBegan = useRef(-1);
   /** Whether that clock is running — latched, so it always finishes. */
   const arcOn = useRef(projects.map(() => false));
 
@@ -738,6 +753,18 @@ export default function MediaLayer() {
   const [clipIn, setClipIn] = useState<Box | null>(null);
   const [clipOut, setClipOut] = useState<Box | null>(null);
   /**
+   * Whether the card that became the viewer has finished arriving.
+   *
+   * The fixed clip size below is the viewer's FINAL size, and it used to be
+   * applied the moment the route changed — while the card was still
+   * deck-sized and springing toward the frame. The picture jumped to its
+   * end size in one frame and the card grew around it: a visible zoom on
+   * every arrival, and the card's corners cutting into a picture that was
+   * already too big for it. Until the card has landed the clip fills the
+   * card and scales with it, which is the whole point of a card that flies.
+   */
+  const [landed, setLanded] = useState(false);
+  /**
    * Whether the shot on screen is allowed to play.
    *
    * False for the length of a crossing plus `playDelay`. A clip that starts the
@@ -834,6 +861,7 @@ export default function MediaLayer() {
   useEffect(() => {
     settling.current = true;
     arrivalShot.current = -1;
+    setLanded(false);
     /**
      * The shot history belongs to the page being left, not the one arriving.
      *
@@ -1447,6 +1475,47 @@ export default function MediaLayer() {
       }
       const onArc = clock !== undefined;
 
+      /**
+       * This card's rise. Snapped, not sprung, on the first frame and
+       * whenever the deal is reset to 0 (a replay puts the cards straight
+       * back under the stage); otherwise a spring toward "dealt", softer by
+       * the card's depth.
+       */
+      const dc = dealClock.current[i];
+      const fc = fanClock.current[i];
+      if (dealv <= 0) dealBegan.current = -1;
+      else if (dealBegan.current < 0) dealBegan.current = dealSeen.current ? now : -2;
+      if (!dealSeen.current || dealv <= 0 || reduced) {
+        snapSpring(dc, dealv > 0 ? 1 : 0);
+        snapSpring(fc, dealv > 0 ? 1 : 0);
+      } else {
+        /* The fan, a beat after the rise; -2 means the deal was already
+         * on when this layer mounted, so it is open. */
+        const d = Math.round(depthNow);
+        const fanOn =
+          dealBegan.current === -2 || now - dealBegan.current >= heroTune.fanDelay;
+        stepSpring(
+          fc,
+          fanOn ? 1 : 0,
+          dt,
+          springConfig(
+            heroTune.fanStiffness * Math.pow(1 - heroTune.fanFalloff, d),
+            Math.max(0.05, heroTune.fanRatio - heroTune.fanRatioFalloff * d),
+            heroTune.fanMass,
+          ),
+          REST.unit,
+        );
+        const soft = Math.pow(1 - heroTune.dealFalloff, Math.round(depthNow));
+        stepSpring(
+          dc,
+          1,
+          dt,
+          springConfig(heroTune.dealStiffness * soft, heroTune.dealRatio, heroTune.dealMass),
+          REST.unit,
+        );
+      }
+      if (i === n - 1) dealSeen.current = true;
+
       const deck = deckCard(
         i,
         n,
@@ -1457,7 +1526,8 @@ export default function MediaLayer() {
         scratch.current.side[i] as 1 | -1,
         clock,
         scratch.current.arcScale[i],
-        dealv,
+        dc.value,
+        fc.value,
       );
       let target: Geo;
       if (mode === "case") {
@@ -1566,6 +1636,13 @@ export default function MediaLayer() {
         if (LAYOUT_FIELDS.has(field)) out = Math.round(out * dpr) / dpr;
         v[field].set(out);
       }
+      /* Publish the viewer's box for the page to sit things beside. */
+      if (mode === "case" && i === sel) {
+        viewer.x.set(v.x.get());
+        viewer.y.set(v.y.get());
+        viewer.w.set(v.w.get());
+        viewer.h.set(v.h.get());
+      }
       /**
        * The shadow, per frame, because it has to be able to leave.
        *
@@ -1583,13 +1660,8 @@ export default function MediaLayer() {
           0,
           1,
         );
-        v.shadow.set(
-          shade >= 1
-            ? front
-              ? SHADOW.cardFront
-              : SHADOW.cardBack
-            : deckShadow(front, shade),
-        );
+        // Always built, never the constant: the light is live-tunable.
+        v.shadow.set(deckShadow(front, shade, heroLight()));
       }
 
       // On a project page the geometry owns stacking outright. On home it is
@@ -1744,9 +1816,14 @@ export default function MediaLayer() {
     if (prime) {
       primed.current = true;
       settling.current = false;
+      // Landed on the targets outright: a project page opened directly.
+      if (mode === "case") setLanded(true);
     }
 
-    if (settling.current && !moving) settling.current = false;
+    if (settling.current && !moving) {
+      settling.current = false;
+      if (mode === "case") setLanded(true);
+    }
   });
 
   const perspective = stage.mobile
@@ -1860,7 +1937,7 @@ export default function MediaLayer() {
                 pushOut={pushOut}
                 pushFrom={isSelected ? pushFrom : -1}
                 contain={isSelected && frameFixed}
-                clipIn={isSelected ? clipIn : null}
+                clipIn={isSelected && landed ? clipIn : null}
                 clipOut={isSelected ? clipOut : null}
                 viewer={isSelected}
                 armed={!isSelected || armed}

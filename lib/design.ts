@@ -285,6 +285,52 @@ export const SPRING = {
  * ------------------------------------------------------------------ */
 
 /**
+ * The light over the deck.
+ *
+ * Shadows are generated the way Alex Widua's "Beautiful Shadows" Figma plugin
+ * generates them (github.com/alexwidua/figma-beautiful-shadows, after Josh
+ * Comeau's "Designing beautiful shadows in CSS"): one light, and a run of
+ * layers whose offset grows on a quad-in curve, whose blur grows on a
+ * quad-out curve and whose alpha falls on a cubic in-out, every one of them
+ * at zero spread. The layers start from the same edge and only their
+ * softness differs, so they sum into one continuous penumbra with nothing
+ * to band. These are the plugin's dials, in its units.
+ */
+export type Light = {
+  azimuth: number;
+  distance: number;
+  elevation: { front: number; back: number };
+  brightness: { front: number; back: number };
+  layers: number;
+  softness: number;
+  side: number;
+  size: number;
+};
+export const LIGHT: Light = {
+  /** Direction the shadow falls, degrees, 0 = right, 90 = down. */
+  azimuth: 64,
+  /** Light-to-element distance. The plugin's own comment: 20 felt good. */
+  distance: 25,
+  /** How far off the page the card sits, 0–1. Front card, then the rest. */
+  elevation: { front: 0.16, back: 0.11 },
+  /** Alpha of the nearest layer; the rest fall away from it. */
+  brightness: { front: 0.15, back: 0.11 },
+  /** Layers. The plugin uses six; its first is always empty and dropped. */
+  layers: 6,
+  /**
+   * Multiplier on every blur radius. 1 is the plugin exactly. It started
+   * at 2.6 on the guess that the plugin's edge would be too crisp at this
+   * card size; tuned by eye, the plugin was right and the distance was
+   * what wanted raising instead.
+   */
+  softness: 1,
+  /** Strength of the card's side face, 1 as authored, 0 for none. */
+  side: 1,
+  /** The element size the plugin's units are authored against. */
+  size: 700,
+};
+
+/**
  * A deck card's shadow, at a given strength.
  *
  * A function rather than a string because the shadow has to be able to leave.
@@ -293,25 +339,40 @@ export const SPRING = {
  * exactly where the composition is supposed to be getting cleaner. Strength 1
  * is the resting shadow and 0 is none, so the cards can put their shadows down
  * before they finish arriving.
+ *
+ * Two parts. The cast, from `LIGHT` above. And the card's thickness: two
+ * hard, barely-blurred layers at the front of the list, the same shape
+ * offset a pixel or so away from the light, which is the side of the card
+ * showing along its bottom and right edges. There is no line on the face —
+ * a one-pixel inset edge read as a stroke, and a stroke is exactly what a
+ * card with a side does not need.
  */
-export function deckShadow(front: boolean, strength = 1): string {
+export function deckShadow(front: boolean, strength = 1, L: Light = LIGHT): string {
   const k = strength < 0 ? 0 : strength > 1 ? 1 : strength;
-  /**
-   * Heavier than it was, and reaching further past the card's own edge.
-   *
-   * Nearly every clip is a white app screen, so a card overlapping another is
-   * white on white and the shadow is the only thing drawing the boundary. The
-   * spreads were pulled in far enough (-28 and -26 against blurs of 56 and 40)
-   * that the shadow barely cleared the card it belonged to.
-   */
-  const cast = front
-    ? { y: 30, blur: 58, spread: -22, alpha: 0.55 }
-    : { y: 18, blur: 42, spread: -20, alpha: 0.48 };
-  const edge = front ? 0.12 : 0.1;
-  return (
-    `0 ${cast.y}px ${cast.blur}px ${cast.spread}px ${castColour(cast.alpha * k)}, ` +
-    `inset 0 0 0 1px ${edgeColour(edge * k)}`
-  );
+  const az = (L.azimuth * Math.PI) / 180;
+  const elevation = front ? L.elevation.front : L.elevation.back;
+  const brightness = front ? L.brightness.front : L.brightness.back;
+  // The plugin authors against a 100px element and scales up from there.
+  const scale = L.distance * (L.size / 100);
+  const grow = Math.max(scale / 100, 0.1);
+  const cast: string[] = [];
+  for (let i = 1; i < L.layers; i++) {
+    const t = i / L.layers;
+    const cubicInOut = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    const alpha = brightness * (1 - cubicInOut);
+    const reach = scale * elevation * (t * t * 5);
+    const x = Math.cos(az) * reach;
+    const y = Math.sin(az) * reach;
+    const blur = 50 * grow * (1 - (1 - t) * (1 - t)) * (elevation * 2) * L.softness;
+    cast.push(
+      `${x.toFixed(1)}px ${y.toFixed(1)}px ${blur.toFixed(1)}px 0 ${castColour(alpha * k)}`,
+    );
+  }
+  const side = [
+    { x: 0.6, y: 0.9, blur: 0.8, alpha: 0.05 },
+    { x: 1, y: 1.5, blur: 1.4, alpha: 0.08 },
+  ].map((l) => `${l.x}px ${l.y}px ${l.blur}px 0 ${castColour(l.alpha * L.side * k)}`);
+  return [...side, ...cast].join(", ");
 }
 
 /**
@@ -441,7 +502,7 @@ export const HERO_TYPE = {
   /** Time between typed characters. */
   perChar: 0.17,
   /** The pause after "Hey,", blinking. The beat. */
-  hold: 1.6,
+  hold: 0.5,
   /** The sweep: how long the cursor takes to cross one full line. Shorter
    *  lines take proportionally less. */
   sweep: 0.26,
@@ -457,10 +518,10 @@ export const HERO_TYPE = {
    * typed jump does not register as a burst; `relax` is how long the tail
    * takes to catch up once the cursor slows.
    */
-  smear: { threshold: 20, gain: 0.03, rise: 0.05, relax: 0.08 },
+  smear: { threshold: 24, gain: 0.011, rise: 0.05, relax: 0.08 },
   /** Cursor: width, its reach above and below the baseline, and a nudge
    *  along the line from where the text actually ends — all in em. */
-  cursor: { width: 0.085, above: 0.76, below: 0.24, offset: 0.02 },
+  cursor: { width: 0.085, above: 0.76, below: 0.24, offset: 0.17 },
   /**
    * How the cursor crosses a line. `ease` runs it on a curve over `sweep`
    * seconds; `spring` runs it on physics and ignores `sweep`.
@@ -470,29 +531,31 @@ export const HERO_TYPE = {
   sweepSpring: { stiffness: 120, ratio: 1, mass: 1 },
   /**
    * The words, which come in against the cursor: it sweeps right and they
-   * arrive from the right, each one starting as the cursor reaches it.
+   * arrive from the right, each one starting a fixed beat after the
+   * cursor's reveal edge reaches its seat.
+   *
+   * On a clock, deliberately. A version drove each word off the cursor's
+   * position instead, which made the gaps exact but hid the whole entrance
+   * under the mask — a word only moves while the cursor has not yet
+   * reached it, and that is precisely the part of the line that is not
+   * showing. What is left of a visible slide is the trade: while a word is
+   * still travelling, the space before it is the real gap plus what is
+   * left of the travel. Keep the travel short and the spring quick and it
+   * is a flick; make them long and slow and it is a drift.
    */
   word: {
     /** How far a word travels in, in em. */
-    travel: 0.5,
-    /** Started this long after the cursor reaches the word — the stagger on
-     *  top of the one the sweep already gives. */
-    delay: 0.04,
+    travel: 0.6,
+    /** Started this long after the reveal edge reaches the word. */
+    delay: 0,
     /** The spring it arrives on: stiffness, damping RATIO (1 is critically
      *  damped, below it overshoots), and mass. */
-    stiffness: 170,
-    ratio: 0.8,
+    stiffness: 100,
+    ratio: 1,
     mass: 1,
     /** Fades in over this long, under the spring. 0 is no fade. */
     fade: 0.25,
   },
-  /**
-   * "Hey," is typed centred on its line. As the sweep begins the whole
-   * line — cursor, clip and words — slides over to its seat on this
-   * spring, and the words make their own entrances inside that slide, so
-   * they follow "Hey" and arrive as well. `lead` starts the slide this long
-   * before the sweep.
-   */
   slide: { lead: 0.05, stiffness: 110, ratio: 0.9, mass: 1 },
   /** After the sweep the cursor blinks this long, then fades out. */
   blinkOut: 1.4,
@@ -502,8 +565,10 @@ export const HERO_TYPE = {
    * it holds for a beat, and then the cards deal in from below while the
    * sentence rises to its seat above them on this spring.
    */
-  holdIn: 1.0,
-  rise: { stiffness: 60, ratio: 1, mass: 1 },
+  holdIn: 0.7,
+  /** The sentence's rise to its seat: how long after the cards start
+   *  rising it sets off, and the spring it rises on. */
+  rise: { delay: 0.26, stiffness: 151, ratio: 1, mass: 1 },
   /**
    * PARKED — nothing reads `ripple` or `hover` at the moment. The particle
    * layer they tune (`components/home/HeroPixels.tsx`) is kept in the repo
@@ -643,15 +708,42 @@ export const HERO_INTRO = {
     /** The cards start rising this long before the last word is fully in,
      *  so the two overlap at the tail rather than queueing. */
     lead: 0.9,
-    duration: 2.8,
+    /**
+     * The spring the stack rises on: stiffness, damping RATIO (1 is
+     * critically damped, below it overshoots — the cards rise past their
+     * seats and settle back) and mass. It was a fixed duration on the house
+     * curve, which read as a different kind of motion from the sentence
+     * rising beside it on a spring.
+     */
+    stiffness: 75,
+    ratio: 0.8,
+    mass: 1,
+    /**
+     * Each card back rises on a spring this fraction less stiff than the
+     * one in front of it, compounding: at 0.1 the fifth card has 66% of the
+     * front card's stiffness. The front card leads and the back of the
+     * stack follows it up, slowest last.
+     */
+    falloff: 0.1,
     /** How far below their seats the cards start, in card heights. Enough
      *  that the front card, which sits low on the landing screen, is fully
      *  under the bottom edge before the deal. */
     riseHeights: 1.15,
-    /** The fan opens over the second part of the rise: cards arrive as a
-     *  stack, then sprawl. 0–1 fraction of the deal at which the spread
-     *  begins. */
-    spreadFrom: 0.3,
+    /**
+     * The fan. The cards arrive as a closed stack and fan out as they rise,
+     * each on a rotation spring of its own: this long after the rise starts,
+     * on this spring, with the stiffness falling by `falloff` per card back
+     * and the damping ratio by `ratioFalloff` per card back, so the deep
+     * cards swing out later and looser than the front.
+     */
+    fan: {
+      delay: 0.25,
+      stiffness: 60,
+      ratio: 0.75,
+      mass: 1,
+      falloff: 0.1,
+      ratioFalloff: 0.05,
+    },
   },
 } as const;
 
@@ -665,6 +757,35 @@ export const HERO_INTRO = {
  * a small scale about its own centre, so it recedes on the spot and lets the
  * phone rising underneath be the only thing that moves.
  */
+/**
+ * The ledger's rows arriving, as the deck assembles beside them.
+ *
+ * Each row rises a short way into its seat on a slow, critically damped
+ * spring, one after another. The fade is the scroll-linked one the ledger
+ * already had; this is the rise on top of it, cued once the intro is far
+ * enough along that the ledger has started to show, and reversed when the
+ * page goes back up to the hero.
+ */
+export const LEDGER_IN = {
+  /** Coming back from a project the rows do not rise — the deck is already
+   *  where it was — they fade in over this long, ms, linear. */
+  returnFade: 250,
+  /** How far below its seat a row starts, px at the reference stage. */
+  rise: 50,
+  stiffness: 150,
+  ratio: 1,
+  mass: 1,
+  /** Each row fades in over this long, linear, alongside its rise. */
+  fade: 0.25,
+  /** Seconds before the first row starts, once cued. */
+  delay: 0.15,
+  /** Seconds between one row starting and the next. */
+  stagger: 0.05,
+  /** Intro progress at which the rows are cued in, and, lower, cued out. */
+  at: 0.7,
+  out: 0.5,
+} as const;
+
 export const HERO_EXIT = {
   /**
    * How fast it fades against intro progress. 1.9 means gone by the time the
@@ -724,9 +845,11 @@ export const HERO_GRADIENT = {
 
 export const DECK = {
   desktop: {
-    /** Scroll distance for the hero-to-deck intro, and per project after that. */
+    /** Scroll distance for the hero-to-deck intro, and per project after
+     *  that. The step is longer than the intro: a card wants more scroll
+     *  than it took to arrive at the deck, or a small movement turns one. */
     intro: 440,
-    step: 440,
+    step: 600,
     /** Authored card is 322x700 at the 1440x900 reference. */
     cardHeight: 700,
     cardHeightMin: 470,
@@ -757,10 +880,36 @@ export const DECK = {
      * cutting to a different size.
      */
     heroScale: [1.62, 1] as const,
-    /** Depth-stack offsets per card behind the front one. */
-    dx: 9,
-    dy: -15,
-    dScale: 0.028,
+    /**
+     * The resting arrangement of the stack, one slot per card behind the
+     * front one, seen from the front. Authored pixels and degrees at the
+     * reference stage; scale is relative to the front card.
+     *
+     * Direction "E1 · Rim, louder" from the deck mocks (2026-09-13). The
+     * cards sit nearly behind the front one and show a rim of edge, each
+     * turning the other way from the card in front, a little more the
+     * deeper it sits — but not by the same amount each time, and the step
+     * out and the rise are uneven too, so the mirror is only approximate.
+     * It used to be a drift up and to the right with 30px of seeded
+     * scatter on top, which piled the mass off one side and came out a
+     * different accident at every viewport. This is placed by hand, and the
+     * numbers are the design: change them here, not with a formula.
+     *
+     * A card deeper than the list takes the last slot.
+     */
+    stack: [
+      { x: 5, y: -12, rotate: 3.5, scale: 0.985 },
+      { x: -7, y: -24, rotate: -4.5, scale: 0.97 },
+      { x: 8, y: -37, rotate: 5, scale: 0.955 },
+      /**
+       * The deepest card turns the OTHER way from the pattern, and only
+       * just. Leaning left it peeked out at the top-left with its status
+       * bar lined up under the front card's, and on two white cards that
+       * read as the front card clipping itself. Nearly straight and stepped
+       * right, it is its own edge.
+       */
+      { x: 4, y: -47, rotate: 1.5, scale: 0.94 },
+    ] as const,
     /**
      * Depth is painted, not faded.
      *
@@ -793,8 +942,6 @@ export const DECK = {
      * wash. It stays clear while it is still passing in front of the stack.
      */
     fadeStart: 0.55,
-    /** Seeded jitter amplitudes: x px, y px, rotation deg. */
-    jitter: [30, 16, 7] as const,
     /** The signature shuffle: out to the right, rotating in Y, then to the back. */
     /**
      * Throw distance, as a multiple of card WIDTH rather than a fixed number
@@ -844,16 +991,6 @@ export const DECK = {
     /** Depths over which the pull tapers to nothing. */
     pullReach: 3,
     /**
-     * How far the cards lean, alternating sides down the stack.
-     *
-     * Five degrees, as it was before the fan. Taking it out left the deck
-     * too square: the lean is part of what makes the stack look arranged.
-     * The fan hides it on the landing screen, and it comes in as the deck
-     * assembles. Seeded by slot (see `deckCard`), the cards sit at 0, 6.2,
-     * -8.05, 6.09 and -9.44 degrees from the front back at every project.
-     */
-    lean: 5,
-    /**
      * The landing fan.
      *
      * Before the deck assembles it sits fanned like a hand of cards: the front
@@ -879,20 +1016,23 @@ export const DECK = {
   },
   mobile: {
     intro: 300,
-    step: 300,
+    step: 400,
     /** Authored card is 252x548 at the 390x844 reference. */
     cardHeight: 548,
     cardHeightMin: 420,
     cx: [0.5, 0.5] as const,
     /** Deck starts low and rises to top:118 as the hero clears. */
     cyPx: { top: 118, rise: 208 },
-    dx: 5,
-    dy: -8,
-    dScale: 0.026,
+    /** The desktop slots at the mobile card's size (548/700 of them). */
+    stack: [
+      { x: 4, y: -9, rotate: 3.5, scale: 0.985 },
+      { x: -5.5, y: -19, rotate: -4.5, scale: 0.97 },
+      { x: 6, y: -29, rotate: 5, scale: 0.955 },
+      { x: 3, y: -37, rotate: 1.5, scale: 0.94 },
+    ] as const,
     opaqueDepth: 2,
     maxScrim: 0.72,
     fadeStart: 0.55,
-    jitter: [13, 7, 4.2] as const,
     arcXWidths: 1.66,
     arcY: -26,
     arcRot: 8,
@@ -903,7 +1043,6 @@ export const DECK = {
     pull: 0.22,
     pullRot: 0.5,
     pullReach: 3,
-    lean: 4,
     fan: { spread: 12, pivot: 260 },
   },
 } as const;
@@ -981,14 +1120,11 @@ export const CASE = {
    */
   titleShift: 34,
   /**
-   * Space kept either side of the stage, so a wide frame never runs to the edge.
-   *
-   * It also has to clear the step arrows, which live outside it: the arrow mark
-   * reaches `arrowInset + 37` = 85 in from the edge, so at the old 96 a fitted
-   * landscape frame passed within 9px of it on a tall window. Far enough out now
-   * that the arrow keeps its own air whatever shape the viewer takes.
+   * Space kept either side of the stage, so a wide frame never runs to the
+   * edge. The home page's rail, so the two pages share one width; the step
+   * arrows sit off the viewer itself (`arrowGap`) and need no lane here.
    */
-  gutter: 108,
+  gutter: 64,
   /**
    * The tallest the viewer is allowed to be, authored against the 900px stage.
    *
@@ -1021,6 +1157,12 @@ export const CASE = {
    * does not fade in, because it is the same words that were in the ledger a
    * moment ago and should travel rather than appear.
    */
+  /**
+   * The intro column arriving: the same family of motion as the ledger's
+   * rows on the home page (LEDGER_IN), so opening a project and arriving at
+   * the deck read as one vocabulary — a rise on a critically damped spring
+   * under a short linear fade, one element after the next.
+   */
   enter: {
     /**
      * How long the column waits before anything starts.
@@ -1029,13 +1171,16 @@ export const CASE = {
      * it puts two things in motion at once and the eye picks the bigger one,
      * so the type would arrive unwatched.
      */
-    lead: 160,
+    lead: 150,
     /** Between one element and the next. */
-    stagger: 90,
-    /** A fade and its rise. */
-    ms: 420,
-    /** How far a fading element comes up from, in authored px. */
-    rise: 10,
+    stagger: 50,
+    /** How far an element rises from, in authored px, and its spring. */
+    rise: 50,
+    stiffness: 150,
+    ratio: 1,
+    mass: 1,
+    /** Each element's fade, ms, linear. */
+    fade: 250,
     /**
      * The rule drawing itself out of its own middle.
      *
@@ -1064,33 +1209,34 @@ export const CASE = {
    * `rail` scales with type and `frameRight` with geometry, each following what
    * it actually holds.
    */
+  /**
+   * The rails are the home page's rails. The header there keeps 64 from
+   * either edge, and this page used to keep 160 on the left and 112 on the
+   * right, so every arrival read as the page narrowing in the middle. The
+   * type column now starts where the home nav's left margin is and the
+   * viewer's right edge lands where the nav's right margin is. The step
+   * arrows are viewport furniture and are not part of this measurement.
+   */
   intro: {
-    rail: 160,
-    /**
-     * The viewer sits much closer to its edge than the type does to the other
-     * one. Deliberately lopsided: the type column is a block of reading and
-     * wants a rail to sit on, while the viewer is the thing being looked at and
-     * wants to be out at the extent of the page. Balanced margins made it read
-     * as pulled in toward the middle.
-     *
-     * It stops here rather than going further because of the step arrows: the
-     * right arrow's mark reaches `arrowInset + 37` in from the edge, and the
-     * viewer has to clear it by enough that the two do not read as touching.
-     * Pushing this lower means moving the arrows in with it.
-     */
-    frameRight: 112,
+    rail: 64,
+    /** Air to the right of the viewer: the home page's rail, like `rail`. */
+    frameRight: 64,
     /** Measure of the type column. Long enough for the overview to breathe. */
     colWidth: 470,
   },
   /**
-   * How far the step arrows sit in from the viewport edge.
+   * How far the step arrows sit from the viewer, in authored px.
    *
-   * They are viewport furniture rather than part of the composition, so they
-   * keep their own lane outside everything else — but at 34 they were pinned to
-   * the glass, which reads as tight on a wide window. Far enough in now to look
-   * placed, still clearly outside the content.
+   * They used to keep a lane at the viewport edge, which worked only while
+   * the viewer kept clear of that lane; with the page on the home page's
+   * 64px rails there is no lane left. They sit off the viewer itself now:
+   * beside it on the shot screens, and below it on the intro screen, where
+   * the viewer runs out to the right rail and there is nothing to its right.
    */
-  arrowInset: 48,
+  arrowGap: 36,
+  /** Leaving by the back link: the column's fade out, ms, linear, before
+   *  the route changes. */
+  leave: { fade: 150 },
   /**
    * The push: the outgoing clip leaves the mask as the incoming one arrives.
    *
@@ -1368,11 +1514,12 @@ export const DECK_MOTION = {
    * Deliberately small. The deck loops, so an unlimited flick spins it through
    * the whole list and out the other side like a slot machine — and there is
    * nothing to be gained from that: nobody reads six projects going past at
-   * speed. Two cards a gesture keeps the deck something you step through
+   * speed. One card a gesture keeps the deck something you step through
    * rather than something you can send spinning, and moving further stays
-   * possible, it just has to be asked for again.
+   * possible, it just has to be asked for again. It was two, and a flick
+   * still went past the card it was aimed at into the one behind.
    */
-  maxPerGesture: 2,
+  maxPerGesture: 1,
   /**
    * Quiet time that ends one scroll and begins the next, in milliseconds.
    *
@@ -1382,6 +1529,13 @@ export const DECK_MOTION = {
    * scrolling again is immediately allowed to keep going.
    */
   gestureGap: 180,
+  /**
+   * Inside one gesture, a further card is allowed once the deck has landed
+   * AND a scroll event arrives this much bigger than the one before it.
+   * Momentum only decays, so a growing event is a finger pushing again
+   * rather than a flick still coasting.
+   */
+  pushRatio: 1.25,
   /**
    * When several cards are travelling at once, send them round alternate
    * sides of the stack rather than all the same way.
