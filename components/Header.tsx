@@ -23,8 +23,9 @@ export default function Header({
   // of that type column, not a separate thing pinned to the corner. Its inset
   // is a horizontal measurement and takes the horizontal scale.
   const sideX = (variant === "case" ? CASE.intro.rail : 64) * stage.sx;
+  // On a phone the bar sits below the status bar, not under it.
   const pad = mobile
-    ? `${stage.top + 22 * stage.s}px ${24 * stage.sx}px`
+    ? `${stage.top + stage.safeTop + 22 * stage.s}px ${24 * stage.sx}px`
     : `${stage.top + 28 * stage.s}px ${sideX}px`;
 
   /**

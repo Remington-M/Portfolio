@@ -36,7 +36,13 @@ export const TYPE = {
   display: { size: 56, line: 1.02, weight: 400, track: "-0.035em" },
   /** Home hero sentence. */
   hero: { size: 42, line: 1.18, weight: 400, track: "-0.025em" },
-  heroMobile: { size: 26, line: 1.28, weight: 400, track: "-0.025em" },
+  /**
+   * 23, not 26: at 26 the sentence ran to three lines on every phone, and
+   * at 23 it is two — "…and I make" / "software come to life with motion."
+   * Measured in Söhne: 24 still breaks to three even at 360px of measure,
+   * so this is the largest size that gives the two-line setting.
+   */
+  heroMobile: { size: 23, line: 1.28, weight: 400, track: "-0.025em" },
   /** Active ledger row. */
   titleL: { size: 28, line: 1.1, weight: 400, track: "-0.025em" },
   /** Shot captions. */
@@ -498,14 +504,24 @@ export const HERO_TYPE = {
   /** The cursor's blink: one full on-and-off cycle. */
   blink: 1.0,
   /** How long the cursor blinks alone before "Hey," is typed. */
-  blinkIn: 0.9,
+  blinkIn: 0.5,
   /** Time between typed characters. */
   perChar: 0.17,
   /** The pause after "Hey,", blinking. The beat. */
   hold: 0.5,
-  /** The sweep: how long the cursor takes to cross one full line. Shorter
-   *  lines take proportionally less. */
+  /** The sweep: how long the cursor takes to cross a line `sweepLineEm`
+   *  long. Shorter lines take proportionally less. */
   sweep: 0.26,
+  /**
+   * The line the sweep time is written for, in em: the desktop hero's
+   * measure, 760px at 42px. Timing the sweep per LINE made it a different
+   * speed at every width — a phone's line is two thirds the length in em,
+   * so the cursor crossed it at two thirds the speed, and the sentence
+   * wraps to three lines there so it also did it once more. Timing it per
+   * em keeps the cursor at one speed everywhere, and the smear, which is
+   * read from that speed, at one length.
+   */
+  sweepLineEm: 760 / 42,
   /** A breath between lines, with the cursor already at the next line's
    *  start. */
   lineGap: 0.06,
@@ -557,6 +573,18 @@ export const HERO_TYPE = {
     fade: 0.25,
   },
   slide: { lead: 0.05, stiffness: 110, ratio: 0.9, mass: 1 },
+  /**
+   * How far "Hey," is carried toward the middle of the line while it is
+   * typed, as a fraction of the way from its seat to dead centre. 1 puts
+   * the cursor in the exact middle of the screen; 0 types in place.
+   *
+   * The slide back to the seat is what this sets. Fully centred, it is a
+   * quarter of the desktop stage's width and over a third of a phone's —
+   * the same move, but on a phone the sentence is the whole width of the
+   * screen, so the line lurched left. The phone value is the desktop
+   * move as a share of the screen.
+   */
+  centre: { desktop: 1, mobile: 0.65 },
   /** After the sweep the cursor blinks this long, then fades out. */
   blinkOut: 1.4,
   fadeOut: 0.5,
@@ -786,12 +814,67 @@ export const LEDGER_IN = {
   out: 0.5,
 } as const;
 
+/**
+ * The title, year and ticks under the deck on a phone.
+ *
+ * They rode the intro directly, showing from 45% of the way through, and
+ * on a phone the deck rises from below the fold straight through the place
+ * they sit, so they were on screen under the cards while the stack was
+ * still arriving. Cued late instead, with a delay for the springs to settle,
+ * and faded on their own clock the way the desktop ledger's rows are.
+ */
+export const CHROME_IN = {
+  /**
+   * Intro progress at which the block is cued in, and, lower, cued out.
+   *
+   * Barely lower. It went at 0.6, and a swipe back up toward the hero had
+   * the deck well on its way down before the title let go — it hung there
+   * under cards that were leaving. It goes the moment the deck starts.
+   */
+  at: 0.9,
+  out: 0.86,
+  /** Seconds after the cue before it starts to show. */
+  delay: 0.4,
+  /** The fade in, seconds, linear. */
+  fade: 0.3,
+  /** The fade out. Quick: it is getting out of the way. */
+  fadeOut: 0.1,
+} as const;
+
+/**
+ * Where the hero sentence sits once it has risen from the middle of the
+ * screen, as the top of its block in authored px.
+ *
+ * The phone value was 132, which with the deck now below the fold left a
+ * wide band of empty page between the sentence and the cards. Lower, it
+ * sits with them. The sentence has faded out before the deck reaches its
+ * seat (see HERO_EXIT.fade), so the two never share the space.
+ */
+export const HERO_SEAT = { desktop: 256, mobile: 220 } as const;
+
+/**
+ * When the deck can be touched.
+ *
+ * On the landing screen the front card is under the thumb, and a swipe
+ * meant to scroll the page was starting a drag on it instead — the card
+ * took the gesture and the page stayed put. The cards ignore the pointer
+ * until the intro has brought the deck up to its seat; the scroller gets
+ * every gesture until then. Intro progress at which the deck goes live,
+ * and, lower, at which it goes quiet again on the way back up.
+ */
+export const DECK_LIVE = { at: 0.95, out: 0.8 } as const;
+
 export const HERO_EXIT = {
   /**
    * How fast it fades against intro progress. 1.9 means gone by the time the
    * deck is half assembled, which is what keeps it clear of the stack.
+   *
+   * Faster on a phone. There the deck rises from below the fold straight
+   * through the sentence's seat, and at 1.9 it was still half showing as
+   * the cards came up under it. At 4 it is gone by a quarter of the way,
+   * before the stack's top edge reaches the text.
    */
-  fade: 1.9,
+  fade: { desktop: 1.9, mobile: 4 },
   /**
    * Where the scale finishes, reached on the fade's clock rather than the
    * intro's — a scale still running after the text is invisible is a scale
@@ -1021,8 +1104,19 @@ export const DECK = {
     cardHeight: 548,
     cardHeightMin: 420,
     cx: [0.5, 0.5] as const,
-    /** Deck starts low and rises to top:118 as the hero clears. */
-    cyPx: { top: 118, rise: 208 },
+    /** The deck's seat once the hero has cleared: the front card's top. */
+    cyPx: { top: 118 },
+    /**
+     * Where the deck sits on the landing screen: below the fold, as on
+     * desktop, with this much of the viewport showing the top of the stack.
+     *
+     * The desktop landing shows 392 of its 900 stage — the front card's top
+     * edge, the rest of it off the bottom — and this is that fraction, so
+     * the two screens land with the same amount of deck in view. It used
+     * to be an authored rise of 208px below the seat, which left the whole
+     * card on screen bar 30px: not below the fold, just cut off.
+     */
+    peek: 392 / 900,
     /** The desktop slots at the mobile card's size (548/700 of them). */
     stack: [
       { x: 4, y: -9, rotate: 3.5, scale: 0.985 },
@@ -1043,7 +1137,17 @@ export const DECK = {
     pull: 0.22,
     pullRot: 0.5,
     pullReach: 3,
-    fan: { spread: 12, pivot: 260 },
+    /**
+     * Wider than it was (12 about 260): the hand can run past the edges of
+     * a phone screen, and a fan that fits inside them read as a huddle.
+     */
+    fan: { spread: 20, pivot: 300 },
+    /**
+     * The deck is larger on the landing screen and shrinks to its seat as
+     * the hero clears, as on desktop. Modest there too: 1.62 would put a
+     * card wider than the phone.
+     */
+    heroScale: [1.14, 1] as const,
   },
 } as const;
 
@@ -1406,13 +1510,46 @@ export const CASE = {
     { dx: 52, dy: 30, rot: 4.5, scale: 0.885 },
     { dx: -18, dy: 46, rot: -2.5, scale: 0.83 },
   ],
-  /** Mobile carousel. */
-  /** The mobile card. 36, not 38 — one radius for this object everywhere. */
-  mobile: { w: 280, h: 609, r: 36, top: 106, gap: 14 },
+  /**
+   * The phone.
+   *
+   * The same page as the desktop's — one viewer, stepped by scrolling,
+   * with arrows — laid out for a 390x844 stage. It was a horizontal
+   * carousel, built on the worry that nobody would know to swipe
+   * sideways; the arrows answer that, and the carousel never got past its
+   * first frame anyway. Authored px on the phone stage.
+   *
+   * The intro card and the return card are not authored here at all: both
+   * are the deck card, at the deck's seat, so arriving from the deck and
+   * leaving back to it move nothing.
+   */
+  phone: {
+    /** Room kept either side of the viewer, which is where the arrows sit. */
+    gutter: 56,
+    /** The tallest the viewer may be, and the line it is centred on. */
+    roomH: 540,
+    centreY: 400,
+    /** The caption, below the lowest edge the viewer can reach. */
+    captionGap: 26,
+    /** The title and year under the intro card. */
+    introGap: 24,
+    /** The step arrows: hit size, and their gap from the viewer. */
+    arrow: 44,
+    arrowGap: 4,
+    /**
+     * The sideways swipe, which steps a shot: left for the next, right for
+     * the one before, the way the arrows point. Travel in px past which a
+     * touch counts as sideways and is kept from scrolling the page, and the
+     * travel or speed on release that steps. A touch on the viewer that
+     * neither moves past `lock` nor lasts past `tapHold` ms is a tap, and
+     * a tap is the next shot.
+     */
+    swipe: { lock: 10, travel: 48, velocity: 400, tapHold: 300 },
+  },
 } as const;
 
 /** Viewport shapes the morphing project frame can take. */
-export type ShotKind = "portrait" | "square" | "desktop" | "landscape";
+export type ShotKind = "portrait" | "pixel" | "square" | "desktop" | "landscape";
 
 /**
  * The shape the viewer takes for a clip.
@@ -1450,7 +1587,18 @@ export type ShotKind = "portrait" | "square" | "desktop" | "landscape";
  */
 export function frameBox(kind: ShotKind, aspect?: number) {
   const box =
-    kind === "square"
+    kind === "pixel"
+      ? /**
+         * A Pixel 4 screen recording that carries the screen's own rounded
+         * corners in the footage, because the export was comped into a
+         * device and cropped back to the screen. The viewer takes the same
+         * corner radius — 55px on a 723px-wide screen — so the footage's
+         * corners and the frame's coincide; at the portrait radius the frame
+         * cut into the corners, and the assistant gesture's edge light
+         * traces exactly those corners.
+         */
+        { w: 309, h: 652, pad: 0, r: 23.5, ir: 23.5, bar: false }
+      : kind === "square"
       ? { w: 652, h: 652, pad: 0, r: 22, ir: 22, bar: false }
       : kind === "desktop"
         ? { w: 1020, h: 638, pad: 0, r: 18, ir: 18, bar: false }
@@ -1530,6 +1678,15 @@ export const DECK_MOTION = {
    */
   gestureGap: 180,
   /**
+   * The longest, in milliseconds, a thrown card's new scroll position is
+   * insisted on if the scroller reports somewhere else — see `commitTop`
+   * in Home. A safety net only: the hold normally ends when the scroller
+   * acknowledges the write, or the moment the hand touches the page again.
+   * iOS ignores the write while its own snap settle is running, and that
+   * settle outlasted the 450ms this was.
+   */
+  commitHold: 3000,
+  /**
    * Inside one gesture, a further card is allowed once the deck has landed
    * AND a scroll event arrives this much bigger than the one before it.
    * Momentum only decays, so a growing event is a finger pushing again
@@ -1593,10 +1750,35 @@ export const DRAG = {
   longPress: 220,
   /** Or travel this far, so a quick flick doesn't feel stuck to the deck. */
   moveThreshold: 8,
+  /**
+   * A press that travels this far mostly UP or DOWN is a scroll, and the
+   * card lets go of it: the gesture is dropped and the page's own pan takes
+   * over. The deck moves sideways; the page moves vertically; a swipe on the
+   * stack has to be able to do either, and it used to do only the first —
+   * any travel past the threshold grabbed the card, whichever way it went,
+   * and a phone could not be scrolled with a thumb on the cards.
+   */
+  scrollThreshold: 8,
+  /**
+   * On touch there is no hold-to-grab. A thumb resting on the card for a
+   * beat is the start of a scroll as often as not, and once the card has
+   * been grabbed the page can no longer take the gesture. Travel decides.
+   */
+  touchLongPress: false,
   /** Under this much travel, a release is still a click and still navigates. */
   clickSlop: 6,
   /** Release faster than this and the card is thrown, whatever the distance. */
   flingVelocity: 520,
+  /**
+   * On touch, a fling also has to have TRAVELLED, this far in deck units
+   * (a fraction of the throw's span). A thumb flick ten pixels long clears
+   * the speed test easily — it is over in a frame — and the card went the
+   * whole way round on what was barely a touch. Speed alone is a mouse
+   * measure; a finger has to have meant it.
+   */
+  flingTravelTouch: 0.05,
+  /** Judged against its own speed. 800 needed a hefty swipe. */
+  flingVelocityTouch: 450,
   /**
    * Distance no longer lives here: how far a drag has to travel is judged in
    * deck units against `DECK_MOTION.commit`, so it means the same thing on a

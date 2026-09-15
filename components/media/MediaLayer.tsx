@@ -26,6 +26,7 @@ import {
   SHADOW,
   SPRING,
   DECK,
+  DECK_LIVE,
   DECK_MOTION,
   DRAG,
   TIDY,
@@ -38,7 +39,6 @@ import {
   deckCardSize,
   deckThrow,
   frontIndex,
-  railCard,
   type Geo,
 } from "@/lib/geometry";
 import { derived as tuned, subscribeTuning, tuning } from "@/lib/tuning";
@@ -336,6 +336,12 @@ export default function MediaLayer() {
     suppressClick: false,
     /** Held so the capture can be taken late — see `grab`. */
     el: null as HTMLElement | null,
+    /**
+     * A finger rather than a mouse. A finger gets direct manipulation: the
+     * card sits under it and goes exactly as far as it does, and only a
+     * flick on release sends it round the arc. See DRAG.
+     */
+    touch: false,
   });
 
   /**
@@ -474,6 +480,7 @@ export default function MediaLayer() {
       if (g.timer) clearTimeout(g.timer);
       g.pointerId = e.pointerId;
       g.index = i;
+      g.touch = e.pointerType === "touch";
       g.grabbed = false;
       g.startX = e.clientX;
       g.startY = e.clientY;
@@ -483,10 +490,28 @@ export default function MediaLayer() {
       g.samples = [{ t: performance.now(), x: e.clientX }];
       g.suppressClick = false;
       g.el = e.currentTarget as HTMLElement;
-      g.timer = setTimeout(grab, DRAG.longPress);
+      g.timer =
+        e.pointerType === "touch" && !DRAG.touchLongPress
+          ? null
+          : setTimeout(grab, DRAG.longPress);
     },
     [mode, grab],
   );
+
+  /** Drop a press that turned out to be a scroll. The page has it now. */
+  const abandon = useCallback(() => {
+    const g = gesture.current;
+    if (g.timer) clearTimeout(g.timer);
+    g.timer = null;
+    g.el = null;
+    g.index = -1;
+    g.pointerId = -1;
+    g.grabbed = false;
+    // Not a click either, should the browser send one anyway.
+    g.suppressClick = true;
+    g.dx = 0;
+    g.dy = 0;
+  }, []);
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {
@@ -500,12 +525,17 @@ export default function MediaLayer() {
       // Travelling far enough is its own grab: waiting out the long press
       // after the pointer has obviously started dragging feels broken.
       if (!g.grabbed && g.travel > DRAG.moveThreshold) {
+        // Mostly vertical: a scroll, not a throw. Let it go.
+        if (Math.abs(g.dy) > Math.abs(g.dx) && Math.abs(g.dy) > DRAG.scrollThreshold) {
+          abandon();
+          return;
+        }
         if (g.timer) clearTimeout(g.timer);
         g.timer = null;
         grab();
       }
     },
-    [grab],
+    [grab, abandon],
   );
 
   const endGesture = useCallback(
@@ -558,9 +588,21 @@ export default function MediaLayer() {
        */
       const span = Math.max(1, deckThrow(stage));
       const progress = Math.abs(dx) / span;
-      const thrown =
-        !cancelled &&
-        (Math.abs(vx) > DRAG.flingVelocity || progress >= DECK_MOTION.commit);
+      /**
+       * A cancel is judged as a release, not as an undo.
+       *
+       * On a phone the browser cancels the pointer when it decides a touch is
+       * a scroll after all — a soft, curving swipe drifts vertically enough
+       * to be claimed part way round the arc. Treated as "never thrown", the
+       * card, already behind the stack, retraced through it to the front.
+       * The hand had let go of a moving card; where it was and how fast it
+       * was going decide, the same as a release.
+       */
+      const touch = e.pointerType === "touch";
+      const flung = touch
+        ? Math.abs(vx) > DRAG.flingVelocityTouch && progress >= DRAG.flingTravelTouch
+        : Math.abs(vx) > DRAG.flingVelocity;
+      const thrown = flung || progress >= DECK_MOTION.commit;
 
       if (!thrown) {
         // Not enough to send it back. The card retraces the arc it came out
@@ -591,6 +633,32 @@ export default function MediaLayer() {
        * pointer speed still decides WHETHER this is a throw, above; it just
        * has no business restating how fast the card is already going.
        */
+      if (touch) {
+        /**
+         * The card is already out at `dx`, held there by the finger, and
+         * the deck has not moved. Put the deck spring at the point on the
+         * arc where the card IS — the arc's sideways swing is a sine over
+         * its length, so this is its inverse — and give it the flick's
+         * speed, so the throw carries on from the hand rather than pulling
+         * the card back to the stack and setting off again.
+         */
+        const dir = dx >= 0 ? 1 : -1;
+        arcDir.current = dir;
+        const reach = Math.min(1, Math.abs(dx) / span);
+        const t = Math.asin(reach) / Math.PI;
+        snapSpring(deckSpring.current, current + t);
+        /**
+         * The hand's speed, in deck units. The arc's sideways travel is
+         * `span * sin(pi * t)`, so a deck rate of 1 moves the card at
+         * `pi * span * cos(pi * t)` px/s here; the finger's px/s divided by
+         * that is the rate that keeps the card at the finger's speed.
+         * Dividing by the span alone sent it off three times faster than
+         * the hand, which was the kick at the start of every throw.
+         */
+        const slope = Math.PI * span * Math.max(0.3, Math.cos(Math.PI * t));
+        deckSpring.current.velocity = clamp(Math.abs(vx) / slope, 0, DECK_MOTION.maxRate);
+        p.set(deckSpring.current.value);
+      }
       travelFrom.current = deckSpring.current.value;
       arcLocked.current = true;
       pTarget.set(target);
@@ -671,6 +739,15 @@ export default function MediaLayer() {
   });
 
   /**
+   * Whether the deck has arrived and may be handled. See DECK_LIVE. A
+   * project page or a return from one starts with the intro complete.
+   */
+  const [deckLive, setDeckLive] = useState(() => pi.get() >= DECK_LIVE.at);
+  useMotionValueEvent(pi, "change", (v) => {
+    setDeckLive((was) => (was ? v >= DECK_LIVE.out : v >= DECK_LIVE.at));
+  });
+
+  /**
    * Which shot the project page is showing. Drives which clips are mounted at
    * all, so the page never has more than a few decoding at once.
    */
@@ -706,7 +783,15 @@ export default function MediaLayer() {
   }, []);
 
   useMotionValueEvent(cp, "change", (v) => {
-    const next = Math.max(0, Math.round(v));
+    /**
+     * Past the last shot is the return ending, and the ending shows the
+     * project's own clip: the card is turning back into the deck card and
+     * this is the deck card's face. Rounded past the end it named a shot
+     * that does not exist, nothing was "in", and the card went to bare
+     * white for the whole ending.
+     */
+    const rounded = Math.max(0, Math.round(v));
+    const next = rounded >= shotShapes.length ? 0 : rounded;
     if (next === shotRef.current) return;
     const prev = shotRef.current;
     shotRef.current = next;
@@ -1145,9 +1230,11 @@ export default function MediaLayer() {
       if (!gesture.current.grabbed && !arcLocked.current) arcDir.current = 1;
     }
 
-    if (gesture.current.grabbed) {
+    if (gesture.current.grabbed && !gesture.current.touch) {
       /**
        * A held card is dragged ALONG THE ARC rather than around freely.
+       * (A mouse. A finger holds the deck still and moves the card itself;
+       * see the per-card target below.)
        *
        * The offset used to be independent of the deck, which meant letting go
        * threw the offset away and snapped the card's target back to the stack
@@ -1418,8 +1505,21 @@ export default function MediaLayer() {
       if (leaving && !arcOn.current[i]) {
         const entry = 1 - (depthNow - (n - 1));
         arcOn.current[i] = true;
-        arcClock.current[i].value = entry < 0.5 ? 0 : 1;
-        arcClock.current[i].velocity = 0;
+        /**
+         * From where it entered, at the speed the deck is going — not from
+         * zero. A scroll's card leaves from rest and enters at nothing, so
+         * this changes nothing there; a thrown card on a phone is already
+         * out at the finger's reach when its arc begins, and a clock that
+         * started at zero regardless drew it back to the stack for a frame
+         * and set off again. That was the hitch at the launch.
+         */
+        if (entry < 0.5) {
+          arcClock.current[i].value = entry;
+          arcClock.current[i].velocity = Math.max(0, deckSpring.current.velocity);
+        } else {
+          arcClock.current[i].value = 1;
+          arcClock.current[i].velocity = 0;
+        }
       }
 
       let clock: number | undefined;
@@ -1531,13 +1631,45 @@ export default function MediaLayer() {
       );
       let target: Geo;
       if (mode === "case") {
-        // Desktop steps through shots vertically; mobile swipes a horizontal
-        // rail. Either way this is the same element that was on the deck — and
-        // it is also where every other card is headed.
-        const viewer = stage.mobile
-          ? railCard(0, cpv, stage, reduced)
-          : caseFrame(cpv, shotShapes, stage, frameFixed);
+        // The same element that was on the deck, retargeted to the page's
+        // viewer — and it is also where every other card is headed.
+        const viewer = caseFrame(cpv, shotShapes, stage, frameFixed);
         target = i === sel ? viewer : tidied(deck, viewer, reduced);
+      } else if (dragging && g.touch) {
+        /**
+         * Under the finger. The card goes exactly where the hand goes, in
+         * both directions, and the deck behind it does not move at all: on
+         * a phone a card sliding out along a pre-baked arc while the finger
+         * had moved an inch read as the deck doing its own thing. Whether
+         * it goes round is decided at release, by the flick.
+         */
+        /**
+         * Posed as the arc would pose it at this reach — the lean, the turn,
+         * the lift — so that a release onto the arc changes nothing about
+         * the card's attitude, only what is moving it. Held flat and square
+         * it snapped into the arc's lean the instant it was let go.
+         */
+        const span = Math.max(1, deckThrow(stage));
+        const reach = Math.min(1, Math.abs(g.dx) / span);
+        const held = deckCard(
+          i,
+          n,
+          pDeck,
+          piDeck,
+          stage,
+          reduced,
+          g.dx >= 0 ? 1 : -1,
+          Math.asin(reach) / Math.PI,
+          scratch.current.arcScale[i],
+          dc.value,
+          fc.value,
+        );
+        target = {
+          ...held,
+          x: deck.x + g.dx,
+          y: held.y + g.dy,
+          scale: held.scale * (reduced ? 1 : DRAG.liftScale),
+        };
       } else if (dragging) {
         /**
          * No horizontal offset of its own: the drag is already moving this
@@ -1833,6 +1965,8 @@ export default function MediaLayer() {
   return (
     <div
       aria-hidden={mode !== "home"}
+      // How the phone's touch sheet finds a card under the finger.
+      data-deck-layer
       style={{
         position: "fixed",
         inset: 0,
@@ -1857,13 +1991,31 @@ export default function MediaLayer() {
           const v = values.current[i];
           const isFront = mode === "home" && i === nearIndex;
           // Whatever is under the hand keeps the pointer, front or not.
-          const grabbable = mode === "home" && (isFront || i === dragIndex);
+          const grabbable =
+            mode === "home" && deckLive && (isFront || i === dragIndex);
           const isSelected = mode === "case" && i === selectedIndex;
           const wantsVideo = !!project.src && liveVideo.has(i);
 
           return (
             <motion.div
               key={project.slug}
+              /**
+               * Flat when it can be. A card at rest in the stack has no turn
+               * about the vertical, but the perspective and the zero rotateY
+               * still put it in 3D, and WebKit does not anti-alias the edge
+               * of a 3D-transformed layer — every card in the stack on a
+               * phone had a stair-stepped edge. With no turn to draw, the
+               * perspective and the rotateY are left out and the transform
+               * is a plain 2D one, which is rasterised with a smooth edge.
+               * The arc, where the turn is real, keeps the 3D transform.
+               */
+              transformTemplate={(latest, generated) => {
+                const ry = parseFloat(String(latest.rotateY ?? 0)) || 0;
+                if (Math.abs(ry) >= 0.05) return generated;
+                return generated
+                  .replace(/perspective\([^)]*\)\s*/, "")
+                  .replace(/rotateY\([^)]*\)\s*/, "");
+              }}
               onPointerDown={
                 grabbable ? (e) => onPointerDown(e, i) : undefined
               }
@@ -1901,6 +2053,13 @@ export default function MediaLayer() {
                 zIndex: v.z,
                 transformPerspective: perspective,
                 transformOrigin: "50% 50%",
+                /**
+                 * Two WebKit nudges for the edges of a transformed card.
+                 * Neither changes what is drawn; both change how its edge
+                 * is rasterised, from a hard pixel step to a covered one.
+                 */
+                outline: "1px solid transparent",
+                WebkitBackfaceVisibility: "hidden",
                 background: isSelected ? "var(--viewer)" : undefined,
                 // Written by the frame loop. The viewer gets a wider, softer
                 // shadow than a deck card — it is a single object on an empty
@@ -2226,6 +2385,46 @@ function ShotClip({
   );
 }
 
+/**
+ * A shot that is a picture: a diagram, a still. Drawn exactly as a clip is
+ * — same box, same push, same role — so it takes part in the sequence the
+ * same way, it just never plays.
+ */
+function ShotStill({
+  shot,
+  role,
+  contain,
+  size,
+  x,
+}: {
+  shot: Shot;
+  role: "in" | "out" | "idle";
+  contain: boolean;
+  size: Box | null;
+  x: MotionValue<number>;
+}) {
+  return (
+    <motion.img
+      src={media(shot.poster!)}
+      alt=""
+      draggable={false}
+      style={{
+        position: "absolute",
+        ...clipBox(size),
+        ...(contain
+          ? { top: 0, left: 0, width: "100%", height: "100%", margin: 0 }
+          : null),
+        objectFit: contain ? "contain" : "cover",
+        display: "block",
+        x,
+        opacity: role === "idle" ? 0 : 1,
+        zIndex: role === "in" ? 3 : 2,
+        pointerEvents: "none",
+      }}
+    />
+  );
+}
+
 function CardFace({
   project,
   radius,
@@ -2301,6 +2500,42 @@ function CardFace({
    * fault, because it is one.
    */
   const introVisible = introIn || introOut ? 1 : 0;
+  /**
+   * The project's own clip FILLS its card whenever it is on screen — on the
+   * deck, on the intro, and on the return ending — exactly as the deck draws
+   * it. The shots are drawn at a box fixed when their transition began, so
+   * a picture does not stretch while the viewer morphs; this one is the
+   * deck card's face, and a box fixed for it could disagree with the card
+   * it ends up in. On a phone it did: the ending card showed the clip a
+   * fifth too large, cropped top and bottom. Only while it is being pushed
+   * OUT does it keep the box it was pushed from.
+   */
+
+  /**
+   * Whether the clip has a frame to show yet.
+   *
+   * Only the front card and its neighbours carry a <video>, so stepping the
+   * deck mounts one on a card that had a picture, and on iOS a video paints
+   * BLACK from the moment it exists until its poster or first frame has
+   * arrived — a few frames of black over a card mid-swipe. The poster stays
+   * mounted underneath as a plain image, always, and the video is held
+   * invisible over it until it has something of its own to paint.
+   */
+  const [hasFrame, setHasFrame] = useState(false);
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!wantsVideo || !el) {
+      setHasFrame(false);
+      return;
+    }
+    if (el.readyState >= 2) {
+      setHasFrame(true);
+      return;
+    }
+    const ready = () => setHasFrame(true);
+    el.addEventListener("loadeddata", ready);
+    return () => el.removeEventListener("loadeddata", ready);
+  }, [wantsVideo]);
 
   useEffect(() => {
     const el = videoRef.current;
@@ -2363,6 +2598,20 @@ function CardFace({
         borderRadius: radius,
         overflow: "hidden",
         /**
+         * The rounded clip, anti-aliased.
+         *
+         * `overflow: hidden` with a radius clips the picture to the corners,
+         * and Safari rasterises that clip with a hard pixel edge once the
+         * card is rotated or scaled — the stack on a phone had a stepped
+         * outline on every card behind the front one. A mask over the same
+         * box is applied with coverage, so its edge is smooth, and it makes
+         * this face a compositing layer of its own, rasterised flat and then
+         * transformed. The gradient is opaque everywhere; only its presence
+         * matters.
+         */
+        WebkitMaskImage: "-webkit-radial-gradient(white, black)",
+        willChange: "transform",
+        /**
          * As the viewer, a plain white surface — and it is meant to be SEEN.
          *
          * The clips are drawn at a fixed size while the frame morphs around
@@ -2422,6 +2671,25 @@ function CardFace({
           pointerEvents: "none",
         }}
       >
+        {project.poster ? (
+          <motion.img
+            src={asset(project.poster)}
+            alt=""
+            draggable={false}
+            style={{
+              position: "absolute",
+              ...clipBox(introOut ? clipOut : null),
+              opacity: introVisible,
+              ...(contain
+                ? { top: 0, left: 0, width: "100%", height: "100%", margin: 0 }
+                : null),
+              objectFit: contain ? "contain" : "cover",
+              x: introX,
+              // Same level as the video, which follows it and so paints over.
+              zIndex: introIn ? 3 : 2,
+            }}
+          />
+        ) : null}
         {wantsVideo ? (
           <motion.video
             ref={videoRef}
@@ -2456,8 +2724,9 @@ function CardFace({
             preload="metadata"
             style={{
               position: "absolute",
-              ...clipBox(introIn ? clipIn : introOut ? clipOut : null),
-              opacity: introVisible,
+              ...clipBox(introOut ? clipOut : null),
+              // Nothing to paint yet: the poster underneath shows instead.
+              opacity: hasFrame ? introVisible : 0,
               // Contained, the overhang would show as a sliver of the clip
               // outside its own letterbox — it only exists to hide sub-pixel
               // seams under `cover`, where there is nothing behind it anyway.
@@ -2479,23 +2748,6 @@ function CardFace({
               <source src={media(project.src)} type="video/mp4" />
             ) : null}
           </motion.video>
-        ) : project.poster ? (
-          <motion.img
-            src={asset(project.poster)}
-            alt=""
-            draggable={false}
-            style={{
-              position: "absolute",
-              ...clipBox(introIn ? clipIn : introOut ? clipOut : null),
-              opacity: introVisible,
-              ...(contain
-                ? { top: 0, left: 0, width: "100%", height: "100%", margin: 0 }
-                : null),
-              objectFit: contain ? "contain" : "cover",
-              x: introX,
-              zIndex: introIn ? 3 : 2,
-            }}
-          />
         ) : null}
 
         {/*
@@ -2509,10 +2761,23 @@ function CardFace({
         */}
         {project.shots.map((shot, k) => {
           const index = k + 1;
-          if (!shot.src && !shot.srcWebm) return null;
           if (Math.abs(index - activeShot) > SHOT_WINDOW) return null;
           const role =
             index === activeShot ? "in" : index === pushFrom ? "out" : "idle";
+          if (!shot.src && !shot.srcWebm) {
+            // A still: a shot that is a picture rather than a clip.
+            if (!shot.poster) return null;
+            return (
+              <ShotStill
+                key={shot.n}
+                shot={shot}
+                role={role}
+                contain={contain}
+                size={role === "in" ? clipIn : role === "out" ? clipOut : null}
+                x={role === "in" ? pushIn : role === "out" ? pushOut : ZERO}
+              />
+            );
+          }
           return (
             <ShotClip
               key={shot.n}

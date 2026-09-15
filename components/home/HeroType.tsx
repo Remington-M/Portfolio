@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react";
 import { animate, motionValue, useAnimationFrame, useReducedMotion } from "motion/react";
+import { HERO_TYPE } from "@/lib/design";
 import { heroRead, heroSpring, heroTune as T } from "@/lib/heroTuning";
 
 /**
@@ -46,6 +47,7 @@ export default function HeroType({
   play,
   typed,
   words,
+  centre: centreFrac = 1,
   onDone,
 }: {
     /** False shows the resting sentence with no cursor. */
@@ -54,6 +56,9 @@ export default function HeroType({
     typed: string;
     /** The rest, a node per word. Each arrives as the cursor reaches it. */
     words: ReactNode[];
+    /** How far the typed word is carried toward the middle, 0–1. See
+     *  HERO_TYPE.centre. */
+    centre?: number;
     onDone: () => void;
 }) {
   const outer = useRef<HTMLSpanElement>(null);
@@ -279,7 +284,7 @@ export default function HeroType({
       if (!outer.current || !lines.current.length) return;
       const l0 = lines.current[0];
       const right = count > 0 ? chars.current[Math.min(count, chars.current.length) - 1] : l0.left;
-      const x = width.current / 2 - (l0.left + right) / 2;
+      const x = (width.current / 2 - (l0.left + right) / 2) * centreFrac;
       animate(outer.current, { x }, { duration: 0 });
     };
 
@@ -388,7 +393,11 @@ export default function HeroType({
       const [x1, y1, x2, y2] = T.sweepEase;
       for (let i = 0; i < lineCount; i++) {
         const from = i === 0 ? pos.current.get() : i;
-        const dur = T.sweep * (1 - (from - i));
+        /* Time in proportion to the line's length in em, against the line
+         * the sweep is authored for, and to how much of it is left. */
+        const ln = lines.current[i];
+        const lineEm = (ln.right - ln.left) / em.current;
+        const dur = T.sweep * (lineEm / HERO_TYPE.sweepLineEm) * (1 - (from - i));
         const last = i === lineCount - 1;
         const ease: [number, number, number, number] = [
           i === 0 ? x1 : 0,

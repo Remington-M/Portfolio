@@ -387,35 +387,48 @@ export const projects: Project[] = [
     collaborators: PLACEHOLDER_COLLAB,
     src: "/media/gesture-navigation/swipe-to-go-home.mp4",
     poster: "/media/gesture-navigation/poster.jpg",
-    /** The three system gestures, then invoking the Assistant with a fourth. */
+    /**
+     * The map of the gestures first, as a still, then the three system
+     * gestures, then invoking the Assistant with a fourth.
+     */
     shots: [
       {
         n: "02",
-        title: "Gesture Navigation",
-        kind: "portrait",
-        src: "/media/gesture-navigation/swipe-to-go-home.mp4",
-        aspect: 0.474,
+        title: "The Gestures",
+        // A diagram, not a screen: the softer window radius, not the phone's.
+        kind: "square",
+        poster: "/media/gesture-navigation/gesture-map.webp",
+        aspect: 1500 / 1804,
       },
       {
         n: "03",
+        title: "Gesture Navigation",
+        kind: "pixel",
+        src: "/media/gesture-navigation/swipe-to-go-home.mp4",
+        // Cropped inside the screen, past its black system bars.
+        aspect: 0.4965,
+      },
+      {
+        n: "04",
         title: "Overview",
-        kind: "portrait",
+        kind: "pixel",
         src: "/media/gesture-navigation/overview.mp4",
         aspect: 0.474,
       },
       {
-        n: "04",
+        n: "05",
         title: "Back",
-        kind: "portrait",
+        kind: "pixel",
         src: "/media/gesture-navigation/back.mp4",
         aspect: 0.474,
       },
       {
-        n: "05",
+        n: "06",
         title: "Assistant Gesture",
-        kind: "portrait",
+        kind: "pixel",
         src: "/media/gesture-navigation/assistant-gesture.mp4",
-        aspect: 0.474,
+        // Full frame with its even 14px border kept; see the encode script.
+        aspect: 0.4792,
       },
     ],
   },

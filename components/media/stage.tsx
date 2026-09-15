@@ -168,7 +168,13 @@ export function StageProvider({ children }: { children: ReactNode }) {
       ? "about"
       : "home";
 
-  const [viewport, setViewport] = useState({ w: 0, h: 0, mobile: false });
+  const [viewport, setViewport] = useState({
+    w: 0,
+    h: 0,
+    mobile: false,
+    safeTop: 0,
+    safeBottom: 0,
+  });
   const [transitionKey, setTransitionKey] = useState(0);
 
   /**
@@ -221,10 +227,25 @@ export function StageProvider({ children }: { children: ReactNode }) {
       const h = window.innerHeight;
       values.vw.set(w);
       values.vh.set(h);
+      /**
+       * The device insets, read off the custom properties globals.css sets
+       * from `env()`. CSS is the only place they exist, and the deck's
+       * geometry is JS, so they are measured here once per resize.
+       */
+      const root = getComputedStyle(document.documentElement);
+      const safeTop = parseFloat(root.getPropertyValue("--safe-top")) || 0;
+      const safeBottom = parseFloat(root.getPropertyValue("--safe-bottom")) || 0;
       setViewport((prev) => {
         const mobile = w < BREAKPOINT.desktop;
-        if (prev.w === w && prev.h === h && prev.mobile === mobile) return prev;
-        return { w, h, mobile };
+        if (
+          prev.w === w &&
+          prev.h === h &&
+          prev.mobile === mobile &&
+          prev.safeTop === safeTop &&
+          prev.safeBottom === safeBottom
+        )
+          return prev;
+        return { w, h, mobile, safeTop, safeBottom };
       });
     };
     sync();
@@ -237,8 +258,12 @@ export function StageProvider({ children }: { children: ReactNode }) {
   }, [values.vw, values.vh]);
 
   const stage = useMemo(
-    () => makeStage(viewport.w, viewport.h, viewport.mobile),
-    [viewport.w, viewport.h, viewport.mobile],
+    () =>
+      makeStage(viewport.w, viewport.h, viewport.mobile, {
+        top: viewport.safeTop,
+        bottom: viewport.safeBottom,
+      }),
+    [viewport.w, viewport.h, viewport.mobile, viewport.safeTop, viewport.safeBottom],
   );
 
   const state = useMemo<StageState>(

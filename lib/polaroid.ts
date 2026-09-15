@@ -51,13 +51,17 @@ export const PRINT = {
    * this size is under a pixel; this is nearer 1.2mm, enough to see the edge
    * as the print turns, which is what makes it a thing and not a picture.
    */
-  thickness: 1.2 / 88,
+  thickness: 0,
   /** How far inside the outline the edge strip sits, in card widths. */
   wallInset: 0.2 / 88,
   /** Distance from the camera to the table, in card widths. */
   camera: 3.6,
-  /** Room the canvas keeps around the card for the swing, as multiples. */
-  margin: { x: 1.9, y: 1.7 },
+  /**
+   * Room the canvas keeps around the card, as multiples of it: for the
+   * swing, and for the shadow, which is thrown a long way down and to the
+   * right and was being cut off by the canvas edge.
+   */
+  margin: { x: 2.4, y: 2.3 },
 } as const;
 
 /* ------------------------------------------------------------------ *
@@ -72,10 +76,16 @@ export const PRINT = {
  * stopped.
  * ------------------------------------------------------------------ */
 export const POLAROID_MOTION = {
+  /**
+   * Which way a tap turns the print. -1 turns it the other way from the
+   * first version, so the bottom-right corner — the curled one — comes up
+   * toward the camera through the turn and its bend is seen.
+   */
+  flipDir: -1 as 1 | -1,
   /** The leading edge. Quick, with a little overshoot. */
-  top: springConfig(70, 0.62),
+  top: springConfig(62, 0.62),
   /** The trailing edge. Softer, so it lags and rings a little longer. */
-  bottom: springConfig(48, 0.55),
+  bottom: springConfig(42, 0.55),
   /**
    * How far the card lifts toward the camera through the turn, in card
    * widths at the half-way point. Without it the print would turn on the
@@ -87,26 +97,65 @@ export const POLAROID_MOTION = {
    * to flat — the inertia of the free edges lagging the push. Curvature along
    * the height is kicked by the landing.
    */
-  flex: springConfig(70, 0.32),
-  flexKick: { turn: -2.2, land: 1.6 },
-  /** Pointer tilt on hover, in radians at the edge of the card. */
+  flex: springConfig(44, 0.32),
+  /**
+   * The landing kick is off: the print no longer drops, and a bow along
+   * its height as it reached size read as the corner's curl reversing.
+   */
+  flexKick: { turn: -2.2, land: 0 },
+  /**
+   * Pointer tilt on hover, in radians at the edge of the card. The side
+   * under the pointer comes up toward it — the print drawn to the hand —
+   * rather than being pressed down, which read as the card shying away.
+   */
   tilt: springConfig(120, 0.9),
   tiltMax: 0.09,
-  /** Arrival: dropped onto the table from above the frame, a little large. */
+  tiltToward: 1 as 1 | -1,
+  /**
+   * Arrival. The print scales up from a little small and fades in, and
+   * its corner curls UP as it comes — from nearly flat, through its rest,
+   * to a peak — and settles back down. The corner is what says this is a
+   * print and not a picture, so the arrival shows it off. It used to drop
+   * in from above the frame, which clipped at the top and read as falling
+   * rather than appearing.
+   */
   entry: {
-    y: springConfig(64, 0.78),
-    scale: springConfig(90, 0.8),
-    roll: springConfig(70, 0.7),
-    fromY: 1.35,
-    fromScale: 1.14,
-    fromRoll: -0.14,
+    /** Seconds after the page is ready before the print starts to arrive. */
+    delay: 0.4,
+    /** Soft, with a gentle bounce. */
+    scale: springConfig(40, 0.6),
+    fade: springConfig(110, 1),
+    curl: springConfig(12, 0.5),
+    fromScale: 0.86,
+    /** The curl at arrival, as a multiple of the resting curl. */
+    fromCurl: 0,
+    /** The upward kick on the curl at arrival, in multiples per second:
+     *  what carries it past its rest to a peak before it settles. */
+    curlKick: 12,
   },
   /**
-   * A resting curl at the bottom-right corner, in card widths of lift at
-   * the corner itself. Prints never lie quite flat; this is the one that
-   * says so, and it is what the shadow separates from.
+   * A resting curl at the bottom-right corner: a real page curl, the sheet
+   * rolled around a cylinder whose axis runs across the corner, through
+   * this many radians at the corner itself. Length is kept, so the corner
+   * travels back toward the fold as it lifts, the way paper does. Prints
+   * never lie quite flat; this is the one that says so, and it is what the
+   * shadow separates from.
+   *
+   * Front side up only. It fades out through a turn and is gone with the
+   * back showing — a print's curl is toward its picture, so turned over the
+   * corner points at the table and nothing bends toward the camera — and
+   * it comes back as the picture does.
    */
-  curl: 0.05,
+  curl: 0.6,
+  /** How much of the sheet is in the roll: the fold sits this far in from
+   *  the corner along the diagonal, in card widths. */
+  curlLength: 1.05,
+  /**
+   * Extra curl at the same corner through the middle of a turn, gone again
+   * at either end: the free corner lagging the sheet as it is flicked over.
+   * Radians, like `curl`.
+   */
+  curlThrough: 0.45,
   /** Reduced motion: one critically damped spring, no twist, no flex. */
   reduced: springConfig(160, 1),
 } as const;
@@ -114,18 +163,75 @@ export const POLAROID_MOTION = {
 /* ------------------------------------------------------------------ *
  * Shadow
  *
- * Two layers, both cast by the sheet itself: every vertex is dropped onto
- * the table along a light direction by its own height, so a lifted corner's
- * shadow moves away from it and goes soft, and a print turning in the air
- * throws a shadow that slides and spreads. The contact layer is tight and
- * dense, the ambient one wide and faint — the way a real shadow has a dark
- * core under the object and a broad fall-off around it.
+ * A real blur. Each layer is the sheet's silhouette, dropped onto the table
+ * along the light by every vertex's own height, rendered once to an
+ * offscreen texture, blurred with a separable Gaussian, and drawn on the
+ * table in the shadow's colour. Three layers in the deck's arrangement — a
+ * tight contact shadow, a body, a long soft tail — each blurred on its own
+ * and blended, which is what makes them read as one shadow: a true blur has
+ * no edge to stack. The earlier version faded each layer inward from a hard
+ * outline instead, and its layers read as separate passes with sharp,
+ * square corners.
  * ------------------------------------------------------------------ */
 export const SHADOW = {
-  /** `offset` is the throw at rest, in card widths: light from the upper left. */
-  contact: { slope: [0.18, -0.32], offset: [0.006, -0.012], soft: 0.03, spread: 0.55, alpha: 0.3 },
-  ambient: { slope: [0.3, -0.55], offset: [0.02, -0.04], soft: 0.12, spread: 1.4, alpha: 0.16 },
+  /**
+   * The light, shared with the deck: high on the left, so shadows throw
+   * down and to the right (LIGHT.azimuth on the home page is 64°, and this
+   * is that direction in the print's y-up units).
+   */
+  dir: [0.44, -0.9] as const,
+  /**
+   * Throw per unit of height, in card widths. The lifted corner's shadow
+   * has to travel OUT from under the corner as it lifts; too little and
+   * the corner simply uncovers the shadow's edge.
+   */
+  throw: 4,
+  /** Multipliers on every layer's blur and alpha. */
+  soft: 1,
+  alpha: 1,
+  /**
+   * The layers, generated on the deck's progression (see `deckShadow` in
+   * design.ts, after the Beautiful Shadows plugin): the offset grows on a
+   * quad-in curve, the blur on a quad-out curve, and the alpha falls on a
+   * cubic in-out — so every layer past the first is fainter and softer
+   * than the one before, and none has an edge with enough contrast to
+   * read on its own. Three hand-placed layers did: each was a distinct
+   * shape at a distinct offset, and they showed as three shadows.
+   *
+   * `reach` scales the height throw for that layer, `offset` is its rest
+   * throw in card widths, `blur` its Gaussian sigma in card widths, `alpha`
+   * its density.
+   */
+  layers: castLayers(6, 0.24, 0.11, 0.3),
+  /** The offscreen textures are at most this fraction of the canvas. */
+  scale: 0.5,
 } as const;
+
+/**
+ * `count` layers (the first, empty one is dropped, as the plugin does),
+ * reaching `offsetMax` card widths at rest and `blurMax` of sigma, from a
+ * nearest alpha of `alpha0`.
+ */
+export function castLayers(count: number, offsetMax: number, blurMax: number, alpha0: number) {
+  const out: { reach: number; offset: number; blur: number; alpha: number }[] = [];
+  const tMax = (count - 1) / count;
+  for (let i = 1; i < count; i++) {
+    const t = i / count;
+    const cubicInOut = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    const quadIn = (t * t) / (tMax * tMax);
+    const quadOut = (1 - (1 - t) * (1 - t)) / (1 - (1 - tMax) * (1 - tMax));
+    out.push({
+      reach: quadIn,
+      offset: offsetMax * quadIn,
+      // Steeper than the plugin's curve at the near end, so the first
+      // layer is a genuinely tight contact shadow and the softness is
+      // saved for the tail.
+      blur: Math.max(0.006, blurMax * Math.pow(quadOut, 1.6)),
+      alpha: alpha0 * (1 - cubicInOut),
+    });
+  }
+  return out;
+}
 
 /* ------------------------------------------------------------------ *
  * Development
@@ -263,6 +369,7 @@ uniform vec3 uShadowOffset;
 uniform float uThick;
 uniform float uWall;
 uniform float uCurl;
+uniform float uCurlLen;
 uniform vec2 uShadowSlope;
 
 varying vec2 vUV;
@@ -275,10 +382,21 @@ vec3 surf(vec2 uv) {
   // Curvature about each axis, centred so bending never lifts the middle.
   float z = uBendX * (p.x * p.x - uCard.x * uCard.x / 12.0)
           + uBendY * (p.y * p.y - uCard.y * uCard.y / 12.0);
-  // The resting curl: the bottom-right corner comes up off the table, the
-  // lift growing as a cube of the distance in from the opposite diagonal.
-  float c = max(0.0, (uv.x - 0.35) + (0.65 - uv.y));
-  z += uCurl * c * c * c;
+  // The page curl at the bottom-right corner. The sheet past a fold line
+  // — the diagonal, uCurlLen in from the corner — is rolled around a
+  // cylinder of radius uCurlLen / uCurl, so the corner itself has turned
+  // through uCurl radians. Arc length is kept: a point d past the fold
+  // lands R·sin(d/R) past it in the plane and R·(1 − cos(d/R)) above,
+  // which is what makes it a bend and not a stretch. Flat when uCurl is 0.
+  vec2 cn = normalize(vec2(1.0, -1.0));
+  float sCorner = dot(vec2(uCard.x, -uCard.y) * 0.5, cn);
+  float d = dot(p, cn) - (sCorner - uCurlLen);
+  if (d > 0.0 && uCurl > 0.0005) {
+    float R = uCurlLen / uCurl;
+    float th = d / R;
+    p -= cn * (d - R * sin(th));
+    z += R * (1.0 - cos(th));
+  }
   // The twist: a rotation about Y whose angle depends on the row.
   float a = mix(uAngleBottom, uAngleTop, uv.y);
   float ca = cos(a), sa = sin(a);
@@ -291,7 +409,7 @@ vec3 surf(vec2 uv) {
   // Roll, for the arrival.
   float cr = cos(uRoll), sr = sin(uRoll);
   q = vec3(q.x * cr - q.y * sr, q.x * sr + q.y * cr, q.z);
-  q = q * uScale * (1.0 + uShadow * 0.04) + uPos + uShadow * uShadowOffset;
+  q = q * uScale + uPos + uShadow * uShadowOffset;
   return q;
 }
 
@@ -357,12 +475,9 @@ uniform float uRadius;
 uniform float uDevelop;
 uniform float uShadow;
 uniform float uWall;
-uniform float uShadowAlpha;
-uniform float uShadowSoft;
-uniform float uShadowSpread;
-uniform vec3 uShadowColor;
 uniform vec3 uPaper;
 uniform vec3 uCamPos;
+uniform float uOpacity;
 
 varying vec2 vUV;
 varying vec3 vNormal;
@@ -454,13 +569,10 @@ void main() {
   float d = roundedBox(p, uCard * 0.5, uRadius);
 
   if (uShadow > 0.5) {
-    // The penumbra widens with height above the table, and the fall-off is
-    // squared so the edge trails away rather than stopping.
-    float soft = uShadowSoft + vHeight * uShadowSpread;
-    float a = 1.0 - smoothstep(-soft, 0.004, d);
-    a = a * a * (0.6 + 0.4 * a);
-    a *= uShadowAlpha;
-    gl_FragColor = vec4(uShadowColor * a, a);
+    // The silhouette, for the blur: solid inside the outline, antialiased
+    // at its edge. The blur is what makes it soft.
+    float a = 1.0 - smoothstep(-0.003, 0.003, d);
+    gl_FragColor = vec4(a);
     return;
   }
 
@@ -472,7 +584,11 @@ void main() {
   // outward normal and is seen from both sides.
   if (uWall < 0.5 && !gl_FrontFacing) n = -n;
   vec3 v = normalize(uCamPos - vPos);
-  vec3 l = normalize(vec3(-0.45, 0.7, 0.9));
+  // High on the left and well in front, the deck's light. In front enough
+  // that the flat face carries the sheen rather than a lifted corner: a
+  // corner curling up toward a raking light became one bright hotspot at
+  // the bottom-right, the opposite of where the light was meant to read.
+  vec3 l = normalize(vec3(-0.5, 0.75, 1.7));
   vec3 h = normalize(l + v);
   float ndl = max(dot(n, l), 0.0);
   float ndh = max(dot(n, h), 0.0);
@@ -482,10 +598,14 @@ void main() {
   float shine;
   float gloss;
   if (uWall > 0.5) {
-    // The cut edge of the white plastic sheet, a touch greyer than the face.
-    base = uPaper * 0.9;
-    shine = 0.08;
-    gloss = 10.0;
+    // The cut edge of the sheet: white plastic, a touch down from the
+    // face. It is seen wherever an edge lifts toward the camera — a
+    // curled corner, a hovered side — and has to read as the print's own
+    // thickness: at the face's brightness it was a second white edge, and
+    // darkened to hide that it became a black line instead.
+    base = uPaper * 0.84;
+    shine = 0.05;
+    gloss = 8.0;
   } else if (gl_FrontFacing) {
     vec2 w0 = uWindow.xy, w1 = uWindow.zw;
     vec2 st = (vUV - w0) / (w1 - w0);
@@ -504,8 +624,8 @@ void main() {
       pic *= 1.0 - rim * 0.22;
       base = pic;
     }
-    shine = 0.30;
-    gloss = 56.0;
+    shine = 0.11;
+    gloss = 34.0;
   } else {
     // Seen from behind, so the back reads the right way round.
     base = texture2D(uBack, vec2(1.0 - vUV.x, 1.0 - vUV.y)).rgb;
@@ -513,10 +633,75 @@ void main() {
     gloss = 9.0;
   }
 
-  vec3 c = base * (0.84 + 0.16 * ndl);
-  c += vec3(1.0) * pow(ndh, gloss) * shine * (0.7 + 0.3 * ndl);
-  c += vec3(1.0) * fresnel * shine * 0.25;
+  // The edge strip's normal faces sideways, so the lighting would darken
+  // it further; it keeps a higher floor than the faces.
+  vec3 c = base * (uWall > 0.5 ? 0.92 + 0.08 * ndl : 0.84 + 0.16 * ndl);
+  // The highlight sits ON the surface rather than adding white to it: it
+  // is scaled by how much headroom the colour has left, so a bright part
+  // of the picture takes almost none and never clips. As the curl sweeps
+  // the normals through the light, the sheen crosses the print instead of
+  // blowing it out.
+  float headroom = 1.0 - dot(c, vec3(0.299, 0.587, 0.114));
+  float spec = pow(ndh, gloss) * shine * (0.7 + 0.3 * ndl);
+  c += vec3(1.0) * spec * (0.35 + 0.65 * headroom);
+  c += vec3(1.0) * fresnel * shine * 0.15 * headroom;
+  // The sheen across the face: a broad fall from the top-left, where the
+  // light is, to the bottom-right. Front face only; the back is matte.
+  if (uWall < 0.5 && gl_FrontFacing) {
+    float sweep = (vUV.y - vUV.x) * 0.5 + 0.5;
+    c *= 0.955 + 0.09 * sweep;
+  }
 
-  gl_FragColor = vec4(c * edge, edge);
+  gl_FragColor = vec4(c * edge, edge) * uOpacity;
+}
+`;
+
+/**
+ * A full-screen triangle, for the blur and composite passes.
+ */
+export const VERT_QUAD = /* glsl */ `
+attribute vec2 aPos;
+varying vec2 vUV;
+void main() {
+  vUV = aPos * 0.5 + 0.5;
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}
+`;
+
+/**
+ * One direction of a separable Gaussian: thirteen taps, sigma of two steps,
+ * with `uStep` the texel stride for the pass. A wide blur is a wide stride
+ * over a linearly filtered texture rather than more taps.
+ */
+export const FRAG_BLUR = /* glsl */ `
+precision mediump float;
+uniform sampler2D uTex;
+uniform vec2 uStep;
+varying vec2 vUV;
+void main() {
+  float w0 = 0.19947, w1 = 0.17603, w2 = 0.12099, w3 = 0.06476,
+        w4 = 0.02700, w5 = 0.00876, w6 = 0.00222;
+  vec4 c = texture2D(uTex, vUV) * w0;
+  c += (texture2D(uTex, vUV + uStep) + texture2D(uTex, vUV - uStep)) * w1;
+  c += (texture2D(uTex, vUV + uStep * 2.0) + texture2D(uTex, vUV - uStep * 2.0)) * w2;
+  c += (texture2D(uTex, vUV + uStep * 3.0) + texture2D(uTex, vUV - uStep * 3.0)) * w3;
+  c += (texture2D(uTex, vUV + uStep * 4.0) + texture2D(uTex, vUV - uStep * 4.0)) * w4;
+  c += (texture2D(uTex, vUV + uStep * 5.0) + texture2D(uTex, vUV - uStep * 5.0)) * w5;
+  c += (texture2D(uTex, vUV + uStep * 6.0) + texture2D(uTex, vUV - uStep * 6.0)) * w6;
+  gl_FragColor = c;
+}
+`;
+
+/** The blurred silhouette laid on the table, in the shadow's colour. */
+export const FRAG_COMPOSITE = /* glsl */ `
+precision mediump float;
+uniform sampler2D uTex;
+uniform vec3 uColor;
+uniform float uAlpha;
+uniform vec2 uShift;
+varying vec2 vUV;
+void main() {
+  float a = texture2D(uTex, vUV - uShift).a * uAlpha;
+  gl_FragColor = vec4(uColor * a, a);
 }
 `;

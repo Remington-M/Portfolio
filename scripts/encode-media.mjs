@@ -65,7 +65,46 @@ const SCALE =
   `scale=w=min(${MAX_SIDE}\\,iw):h=min(${MAX_SIDE}\\,ih)` +
   `:force_original_aspect_ratio=decrease:force_divisible_by=2`;
 
-function args(src, dst) {
+/**
+ * Clips that were exported inside a device frame, and where the screen is
+ * in them: `w:h:x:y` in source pixels, applied before the scale.
+ *
+ * The gesture navigation recordings were comped into a Pixel 4 on white and
+ * the originals are gone. The viewer draws no device frames — a bezel is a
+ * second subject — so these are cropped to the screen, whose position never
+ * moves in the comp. The rectangle was measured off the bezel in
+ * `back.mp4`, where the screen is white edge to edge: 1146 × 2414 at
+ * (146, 352) in the 1440 × 3040 export, brought to even sizes. The
+ * screen's own rounded corners come along with it — 87px on the source,
+ * 0.076 of the screen's width — and the `pixel` shot kind in design.ts
+ * gives the viewer the same corner radius so the two coincide.
+ */
+const CROP = {
+  /**
+   * This one is also cropped INSIDE the screen: the Maps recording carries
+   * opaque black status and gesture bars, 54px and 52px on the source, and
+   * the launcher under them is as dark, so they read as bezel. Taken off,
+   * 1146 × 2308 at (146, 406). The screen's corner arcs are 87px, so what
+   * survives of them is a 6px sliver at each edge that the viewer's own
+   * rounding hides; the shot's aspect is 0.4965 to match.
+   */
+  "gesture-navigation/swipe-to-go-home.mp4": "1146:2308:146:406",
+  "gesture-navigation/overview.mp4": "1146:2414:146:352",
+  "gesture-navigation/back.mp4": "1146:2414:146:352",
+  /**
+   * The assistant clip is NOT cropped. It carries a thin black border —
+   * 14px each side, 33 top and 30 bottom on the source — and the gesture's
+   * light runs along the very edge of the screen and round its bottom
+   * corners. Cropped to the screen, the viewer's rounding sat exactly on
+   * that light and cut it; with the border kept, the light sits inside the
+   * viewer's edge and the border reads as a hairline of bezel. Only the
+   * top and bottom are trimmed, down to the 14px the sides have, so the
+   * border is even all round.
+   */
+  "gesture-navigation/assistant-gesture.mp4": "1440:3004:0:19",
+};
+
+function args(src, dst, crop) {
   return [
     "-hide_banner", "-loglevel", "error", "-y",
     "-i", src,
@@ -74,7 +113,7 @@ function args(src, dst) {
     // audio is bytes nobody can hear. `-dn`/`-sn` drop the timecode and
     // subtitle tracks the screen recorders leave behind.
     "-map", "0:v:0", "-an", "-sn", "-dn",
-    "-vf", SCALE,
+    "-vf", crop ? `crop=${crop},${SCALE}` : SCALE,
     "-c:v", "libx264",
     // High profile and yuv420p: the combination every browser decodes in
     // hardware. 4:4:4 or 10-bit would look marginally better on the flat UI
@@ -153,13 +192,15 @@ for (const slug of slugs) {
     }
 
     const before = await probe(src);
-    await run("ffmpeg", args(src, dst), { maxBuffer: 1 << 24 });
+    const crop = CROP[`${slug}/${clip}`];
+    await run("ffmpeg", args(src, dst, crop), { maxBuffer: 1 << 24 });
     const after = await probe(dst);
     encoded += 1;
 
     const mb = (n) => (n / 1e6).toFixed(1);
     console.log(
       `  ✓ ${clip.padEnd(30)} ${before.w}x${before.h} -> ${after.w}x${after.h}` +
+        (crop ? `  cropped ${crop}` : "") +
         `  ${mb(before.size)}MB -> ${mb(after.size)}MB` +
         `  aspect ${(after.w / after.h).toFixed(4)}`,
     );

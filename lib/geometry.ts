@@ -73,9 +73,22 @@ export type Stage = {
    * there is slack to centre.
    */
   top: number;
+  /**
+   * The phone's own insets, in px: the status bar and notch above, the home
+   * indicator below. The viewport is declared `cover`, so the page draws
+   * under both, and anything pinned to an edge has to keep clear of them.
+   * Zero on desktop and on phones without them.
+   */
+  safeTop: number;
+  safeBottom: number;
 };
 
-export function makeStage(vw: number, vh: number, mobile: boolean): Stage {
+export function makeStage(
+  vw: number,
+  vh: number,
+  mobile: boolean,
+  safe: { top: number; bottom: number } = { top: 0, bottom: 0 },
+): Stage {
   const ref = mobile ? MOBILE_REF : DESKTOP_REF;
   const min = mobile ? SCALE.min.mobile : SCALE.min.desktop;
   const s = clamp(vh / ref.h, min, SCALE.max);
@@ -84,6 +97,8 @@ export function makeStage(vw: number, vh: number, mobile: boolean): Stage {
     w,
     h: vh,
     mobile,
+    safeTop: safe.top,
+    safeBottom: safe.bottom,
     s,
     sx: clamp(w / ref.w, min, 1),
     ts: 1 + Math.max(0, s - 1) * SCALE.typeRate,
@@ -143,10 +158,10 @@ export function deckOrigin(stage: Stage, intro: number) {
   if (stage.mobile) {
     const cfg = DECK.mobile;
     const cx = stage.w * cfg.cx[0];
-    const cy =
-      stageY(stage, cfg.cyPx.top) +
-      size.height / 2 +
-      (1 - intro) * cfg.cyPx.rise * stage.s;
+    const seat = stageY(stage, cfg.cyPx.top) + size.height / 2;
+    /** Landing: the card's top edge `peek` of the viewport above the bottom. */
+    const low = stage.h * (1 - cfg.peek) + size.height / 2;
+    const cy = lerp(low, seat, intro);
     return { cx, cy };
   }
   const cfg = DECK.desktop;
@@ -386,9 +401,7 @@ export function deckCard(
    * off the bottom of the page, which is not a calmer version of the design,
    * just a broken one.
    */
-  const heroGrow = stage.mobile
-    ? 1
-    : lerp(DECK.desktop.heroScale[0], DECK.desktop.heroScale[1], intro);
+  const heroGrow = lerp(cfg.heroScale[0], cfg.heroScale[1], intro);
 
   /**
    * Where the fan puts a card `d` places back: its angle, and the offset that
@@ -537,6 +550,12 @@ export function returnProgress(cp: number, shots: number): number {
  * supposed to sit under had stopped growing.
  */
 export function caseBaseline(stage: Stage): number {
+  if (stage.mobile) {
+    // The line under the intro card, where its title sits and, at the
+    // end, the way back.
+    const rc = returnCardBox(stage);
+    return rc.top + rc.h + CASE.phone.introGap * stage.s;
+  }
   return stageY(stage, DESKTOP_REF.h * CASE.baseline);
 }
 
@@ -581,8 +600,6 @@ export function caseFrame(
   const r = returnProgress(cp, shots);
   const L = (from: number, to: number) => lerp(from, to, r);
 
-  const card = CASE.returnCard;
-
   /**
    * The frame is contained inside the room it has, on both axes at once.
    *
@@ -602,18 +619,54 @@ export function caseFrame(
    * the frame bigger on a bigger stage, and the authored sizes are chosen for
    * how they read rather than to be filled out.
    */
-  const roomW = Math.max(1, stage.w - CASE.gutter * 2 * stage.sx);
-  const roomH = Math.max(1, CASE.roomH * s);
+  const mobile = stage.mobile;
+  const phone = CASE.phone;
+  const roomW = Math.max(
+    1,
+    mobile ? stage.w - phone.gutter * 2 : stage.w - CASE.gutter * 2 * stage.sx,
+  );
+  const roomH = Math.max(1, (mobile ? phone.roomH : CASE.roomH) * s);
   const fit = Math.min(1, roomW / (base.w * s), roomH / (base.h * s));
 
-  const w = (r > 0 ? L(base.w * fit, card.w) : base.w * fit) * s;
-  const h = (r > 0 ? L(base.h * fit, card.h) : base.h * fit) * s;
-  const pad = (r > 0 ? L(base.pad, 0) : base.pad) * s;
-  const radius = (r > 0 ? L(base.r, card.r) : base.r) * s;
-  const innerRadius = (r > 0 ? L(base.ir, card.r) : base.ir) * s;
+  /**
+   * The card the viewer becomes at the end — and, on a phone, begins as.
+   *
+   * Desktop authors one. The phone uses the deck card at the deck's seat:
+   * the intro screen is that card exactly where the deck left it, and the
+   * return puts it back in the same place, so neither move is a move.
+   */
+  const rc = returnCardBox(stage);
 
-  const baseline = caseBaseline(stage);
+  const w = r > 0 ? L(base.w * fit * s, rc.w) : base.w * fit * s;
+  const h = r > 0 ? L(base.h * fit * s, rc.h) : base.h * fit * s;
+  const pad = (r > 0 ? L(base.pad, 0) : base.pad) * s;
+  /**
+   * The corners shrink with the frame. `fit` scales the box down to the
+   * room it has, and on a phone that is most of the way — a radius scaled
+   * only by the stage sat on a frame two thirds its authored size, and the
+   * corners read as far rounder than the deck card's beside them.
+   */
+  const radius = r > 0 ? L(base.r * fit * s, rc.r) : base.r * fit * s;
+  const innerRadius = r > 0 ? L(base.ir * fit * s, rc.r) : base.ir * fit * s;
   const introScreen = introScreen0;
+
+  if (mobile && introScreen) {
+    return {
+      x: stage.w / 2 - rc.w / 2,
+      y: rc.top,
+      w: rc.w,
+      h: rc.h,
+      radius: rc.r,
+      pad: 0,
+      innerRadius: rc.r,
+      rotate: 0,
+      rotateY: 0,
+      scale: 1,
+      opacity: 1,
+      scrim: 0,
+      z: 52,
+    };
+  }
 
   let x: number, y: number;
   if (introScreen) {
@@ -632,8 +685,10 @@ export function caseFrame(
      * only if it changes around a fixed middle — pin the bottom edge instead
      * and the top jumps, which reads as two different players being swapped.
      */
-    const centre = stageY(stage, DESKTOP_REF.h * CASE.centreY);
-    y = r > 0 ? L(centre - (base.h * fit * s) / 2, stageY(stage, card.top)) : centre - h / 2;
+    const centre = mobile
+      ? stageY(stage, phone.centreY)
+      : stageY(stage, DESKTOP_REF.h * CASE.centreY);
+    y = r > 0 ? L(centre - (base.h * fit * s) / 2, rc.top) : centre - h / 2;
   }
 
   return {
@@ -653,8 +708,29 @@ export function caseFrame(
   };
 }
 
+/**
+ * The card the project page's viewer turns back into, in stage px.
+ *
+ * On desktop an authored card at an authored seat. On a phone the deck card
+ * at the deck's own seat, which is where the page's intro card sits too.
+ */
+export function returnCardBox(stage: Stage) {
+  if (stage.mobile) {
+    const size = deckCardSize(stage);
+    const { cy } = deckOrigin(stage, 1);
+    return { w: size.width, h: size.height, r: size.radius, top: cy - size.height / 2 };
+  }
+  const card = CASE.returnCard;
+  const s = stage.s;
+  return { w: card.w * s, h: card.h * s, r: card.r * s, top: stageY(stage, card.top) };
+}
+
 /** Where the shot title and its meta line sit, clear of the largest frame. */
 export function caseCaption(stage: Stage): number {
+  if (stage.mobile) {
+    const p = CASE.phone;
+    return stageY(stage, p.centreY + p.roomH / 2 + p.captionGap);
+  }
   /**
    * Derived from where the viewer actually ends, not authored beside it.
    *
@@ -671,13 +747,13 @@ export function caseCaption(stage: Stage): number {
 export function ghostCards(r: number, stage: Stage) {
   const e = smoothstep(r);
   const s = stage.s;
-  const card = CASE.returnCard;
+  const rc = returnCardBox(stage);
   return CASE.ghosts.map((g, k) => ({
     key: k,
-    w: card.w * s,
-    h: card.h * s,
-    radius: card.r * s,
-    top: stageY(stage, card.top),
+    w: rc.w,
+    h: rc.h,
+    radius: rc.r,
+    top: rc.top,
     dx: g.dx * e * s,
     dy: g.dy * e * s,
     rotate: g.rot * e,
@@ -686,62 +762,3 @@ export function ghostCards(r: number, stage: Stage) {
   }));
 }
 
-/* ------------------------------------------------------------------ *
- * Project page — mobile
- *
- * The mobile project page is a horizontal snap carousel. The axis split is
- * deliberate: vertical moves between projects, horizontal between shots.
- *
- * The first card is the shared element carried over from the home deck, so its
- * geometry is computed here from the rail's scroll position rather than laid
- * out as a flex item — that keeps it in the persistent media layer, and keeps
- * its video playing.
- * ------------------------------------------------------------------ */
-
-/** Distance from one carousel card to the next. */
-export function railPitch(stage: Stage): number {
-  return (CASE.mobile.w + CASE.mobile.gap) * stage.s;
-}
-
-/** Side padding that centres the first and last cards in the rail. */
-export function railPadding(stage: Stage): number {
-  return (stage.w - CASE.mobile.w * stage.s) / 2;
-}
-
-/**
- * Off-centre cards tilt, pivoting from their own centre so they stay
- * vertically aligned and just sit off-kilter. Tuned down twice in the design —
- * keep it subtle.
- */
-export function railCard(
-  i: number,
-  rp: number,
-  stage: Stage,
-  reduced: boolean,
-): Geo {
-  const m = CASE.mobile;
-  const s = stage.s;
-  const near = Math.min(1, Math.abs(rp - i));
-  const signed = i - rp;
-  const w = m.w * s;
-  const h = m.h * s;
-
-  return {
-    x: railPadding(stage) + i * railPitch(stage) - rp * railPitch(stage),
-    y: stageY(stage, m.top) + (reduced ? 0 : near * 8),
-    w,
-    h,
-    radius: m.r * s,
-    pad: 0,
-    innerRadius: m.r * s,
-    rotate: reduced
-      ? 0
-      : (signed > 0 ? 1 : -1) * Math.min(1, Math.abs(signed)) * 1,
-    rotateY: 0,
-    scale: reduced ? 1 : 1 - near * 0.035,
-    // Same rule as the deck: veiled, never see-through.
-    opacity: 1,
-    scrim: reduced ? 0 : near * 0.3,
-    z: 52,
-  };
-}
