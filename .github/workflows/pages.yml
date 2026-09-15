@@ -3,6 +3,26 @@
 # Every route is prerendered and there is no server code, so the whole site
 # exports to plain files. The two environment variables below are what switch
 # that on — they are off by default so local development is unaffected.
+#
+# ---------------------------------------------------------------------------
+# Going live on the custom domain
+#
+# One switch: set a repository variable named SITE_DOMAIN (Settings → Secrets
+# and variables → Actions → Variables) to the bare domain, e.g.
+# `remingtonm.com`. That single value does three things at once — drops the
+# `/Portfolio` base path, points the canonical and Open Graph URLs at the real
+# host, and writes the CNAME file into the deploy.
+#
+# Until it is set, everything below behaves exactly as it does today: a project
+# page at remington-m.github.io/Portfolio. So this can be merged long before
+# the DNS is ready.
+#
+# The CNAME file matters more than it looks. A custom domain configured in the
+# Pages settings is stored alongside a CNAME file in the published artifact,
+# and an Actions-based deploy — unlike a branch-based one — does not create
+# that file for you. Deploy without it and a later run can clear the custom
+# domain setting, taking the site down days after the change that caused it.
+# ---------------------------------------------------------------------------
 name: Deploy to GitHub Pages
 
 on:
@@ -30,12 +50,38 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
+
+      # Resolved in a step rather than inline, because the obvious
+      # `${{ vars.X && 'a' || 'b' }}` is a trap when 'a' is the empty string:
+      # the empty string is falsy, so the expression falls through to 'b' and
+      # the base path comes back exactly when it should be gone.
+      - name: Resolve deployment target
+        id: target
+        env:
+          SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
+        run: |
+          if [ -n "$SITE_DOMAIN" ]; then
+            echo "base_path=" >> "$GITHUB_OUTPUT"
+            echo "site_url=https://$SITE_DOMAIN" >> "$GITHUB_OUTPUT"
+            echo "Building for the custom domain: $SITE_DOMAIN"
+          else
+            echo "base_path=/Portfolio" >> "$GITHUB_OUTPUT"
+            echo "site_url=https://${GITHUB_REPOSITORY_OWNER,,}.github.io/Portfolio" >> "$GITHUB_OUTPUT"
+            echo "Building as a project page. Set the SITE_DOMAIN variable to go live."
+          fi
+
       - run: npm run typecheck
       - run: npm run build
         env:
           STATIC_EXPORT: "1"
           # A project site is served from /<repo>, not the root of a domain.
-          NEXT_PUBLIC_BASE_PATH: /Portfolio
+          NEXT_PUBLIC_BASE_PATH: ${{ steps.target.outputs.base_path }}
+          NEXT_PUBLIC_SITE_URL: ${{ steps.target.outputs.site_url }}
+
+      - name: Write CNAME
+        if: vars.SITE_DOMAIN != ''
+        run: echo "${{ vars.SITE_DOMAIN }}" > ./out/CNAME
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: ./out

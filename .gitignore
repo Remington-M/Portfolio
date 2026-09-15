@@ -16,3 +16,6 @@ next-env.d.ts
 
 # Raw camera/screen exports. Compressed copies live in public/media.
 /media-source
+
+# Scratch output from `npm run og -- --open`.
+/public/og-preview.html

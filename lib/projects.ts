@@ -92,7 +92,16 @@ export type Project = {
   shots: Shot[];
 };
 
-const PLACEHOLDER_OVERVIEW = "Overview copy goes here.";
+/**
+ * Copy that has not been written yet.
+ *
+ * Exported so `generateMetadata` can recognise it: a placeholder on the page
+ * is obvious to anyone looking at it, but the same string in a `<meta
+ * name="description">` is invisible until it turns up in a search result or a
+ * shared link. The page keeps showing it — it should be conspicuous — while
+ * the metadata falls back to something true.
+ */
+export const PLACEHOLDER_OVERVIEW = "Overview copy goes here.";
 const PLACEHOLDER_COLLAB = "Name Surname, Name Surname";
 
 /**
