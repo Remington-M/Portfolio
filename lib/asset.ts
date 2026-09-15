@@ -1,3 +1,5 @@
+import { CLIPS_WITH_POSTER } from "./posters.generated";
+
 /**
  * Prefix a path into the `public` folder with the deployment's base path.
  *
@@ -42,4 +44,20 @@ export function media(path?: string): string | undefined {
   if (/^https?:\/\//i.test(path)) return path;
   if (MEDIA && path.startsWith("/")) return `${MEDIA}${path}`;
   return asset(path);
+}
+
+/**
+ * The still to show while a clip is still arriving, if one was drawn.
+ *
+ * Without this a shot's <video> has no poster, and a clip that has not
+ * buffered a frame yet renders as an empty device — the frame, the caption and
+ * the tick marks all correct, and nothing inside. On anything slower than a
+ * good connection that is the first thing a visitor sees of the work.
+ *
+ * `undefined` when the still does not exist, which leaves the attribute off
+ * entirely rather than pointing the browser at a 404.
+ */
+export function poster(src?: string): string | undefined {
+  if (!src || !CLIPS_WITH_POSTER.has(src)) return undefined;
+  return media(src.replace(/\.mp4$/, ".jpg"));
 }

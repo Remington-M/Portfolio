@@ -20,7 +20,7 @@ import {
 import Link from "next/link";
 import { useStage } from "./stage";
 import { openingIndex, projects, stripeFill, type Shot } from "@/lib/projects";
-import { asset, media } from "@/lib/asset";
+import { asset, media, poster } from "@/lib/asset";
 import {
   CASE,
   SHADOW,
@@ -2086,7 +2086,10 @@ function ShotClip({
   return (
     <motion.video
       ref={ref}
-      poster={media(shot.poster)}
+      /* The shot's own still if it names one, otherwise the one drawn beside
+       * its clip by `npm run posters`. Undefined when neither exists, which
+       * leaves the attribute off rather than pointing at a 404. */
+      poster={media(shot.poster) ?? poster(shot.src)}
       draggable={false}
       muted
       loop
