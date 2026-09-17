@@ -54,7 +54,7 @@ export const TYPE = {
   titleMMobile: { size: 22, line: 1.14, weight: 400, track: "-0.02em" },
   /** Inactive ledger rows. */
   titleS: { size: 20, line: 1.1, weight: 400, track: "-0.02em" },
-  /** Case study overview. Held to `CASE.intro.colWidth`, about 55 characters. */
+  /** Case study overview. Held to `CASE.intro.colWidth`, about 63 characters. */
   body: { size: 18, line: 1.55, weight: 400, track: "0" },
   /**
    * The About page. It has no headline — the first sentence is set a step
@@ -469,7 +469,7 @@ export const HOME_IDLE = {
    */
   first: 10000,
   /** Milliseconds a card rests at the front before the next one is dealt. */
-  every: 3000,
+  every: 6000,
   /**
    * How far down the intro the deck commits back to the first project, as a
    * fraction of it.
@@ -1326,7 +1326,7 @@ export const CASE = {
     /** Air to the right of the viewer: the home page's rail, like `rail`. */
     frameRight: 64,
     /** Measure of the type column. Long enough for the overview to breathe. */
-    colWidth: 470,
+    colWidth: 540,
   },
   /**
    * How far the step arrows sit from the viewer, in authored px.

@@ -72,40 +72,49 @@ export default function CaseView({ project }: { project: Project }) {
   });
 
   /**
-   * Re-read the scroller until it has stopped moving.
+   * Re-read the scroller until it has arrived.
    *
    * Scroll position is the page's state, and it is read off scroll events.
-   * iOS Safari does not always send the last one: a snap that finishes a
-   * smooth scroll or a flick can land without an event, and the page is
-   * left a fraction short of the shot it is visibly on — the intro's title
-   * ghosting at a few percent under the first shot's caption was exactly
-   * that. So after anything that sets the scroller moving, it is polled
-   * until two reads agree, and the final position is taken from there.
+   * Safari does not always send the last one: a snap that finishes a smooth
+   * scroll or a flick can land without an event, and the page is left a
+   * fraction short of the shot it is visibly on — the intro's title ghosting
+   * at a few percent under the first shot's caption was exactly that. So
+   * after anything that sets the scroller moving, it is polled, and the
+   * final position is taken from the last read.
+   *
+   * It used to stop as soon as two reads agreed. Desktop Safari begins a
+   * smooth scroll a few frames late, so two reads agreed BEFORE the scroller
+   * had moved, the poll ended, and the overview stayed half-faded on the
+   * next shot. Now, given a target, it waits for the scroller to reach it,
+   * and only otherwise accepts a position that has moved and then held.
    */
   const settling = useRef<ReturnType<typeof setInterval> | null>(null);
-  const settle = useCallback(() => {
-    if (settling.current) clearInterval(settling.current);
-    let last = -1;
-    let same = 0;
-    let ticks = 0;
-    settling.current = setInterval(() => {
-      const el = scrollRef.current;
-      ticks += 1;
-      if (!el || ticks > 30) {
+  const settle = useCallback(
+    (target?: number) => {
+      if (settling.current) clearInterval(settling.current);
+      const start = scrollRef.current?.scrollTop ?? -1;
+      let last = -1;
+      let held = 0;
+      let ticks = 0;
+      const done = () => {
+        onScroll();
         if (settling.current) clearInterval(settling.current);
         settling.current = null;
-        return;
-      }
-      const top = el.scrollTop;
-      same = top === last ? same + 1 : 0;
-      last = top;
-      if (same >= 2) {
-        onScroll();
-        clearInterval(settling.current!);
-        settling.current = null;
-      }
-    }, 80);
-  }, [onScroll]);
+      };
+      settling.current = setInterval(() => {
+        const el = scrollRef.current;
+        ticks += 1;
+        if (!el) return done();
+        const top = el.scrollTop;
+        const arrived = target !== undefined && Math.abs(top - target) < 1;
+        held = top === last && top !== start ? held + 1 : 0;
+        last = top;
+        // Arrived; or moved and then held still; or given up on.
+        if (arrived || held >= 3 || ticks > 60) done();
+      }, 80);
+    },
+    [onScroll],
+  );
   useEffect(
     () => () => {
       if (settling.current) clearInterval(settling.current);
@@ -128,7 +137,7 @@ export default function CaseView({ project }: { project: Project }) {
         top,
         behavior: reduced ? "auto" : "smooth",
       });
-      settle();
+      settle(top);
     },
     [reduced, settle, shotCount],
   );
@@ -148,6 +157,14 @@ export default function CaseView({ project }: { project: Project }) {
 
   const introOpacity = useTransform(cp, (v) => clamp01(1 - Math.abs(v) * 1.9));
   const introY = useTransform(cp, (v) => (reduced ? 0 : -v * 44));
+  /**
+   * Taken out of the page altogether once it has faded, not just left at
+   * zero. Safari would sometimes keep painting the column's last frame at
+   * its last opacity after a smooth scroll to the next shot — an inline
+   * opacity change alone did not get its layer redrawn — and a visibility
+   * change is the kind of change it cannot skip.
+   */
+  const introVisibility = useTransform(introOpacity, (o) => (o > 0.001 ? "visible" : "hidden"));
   const ret = useTransform(cp, (v) => returnProgress(v, shotCount));
   const chromeOpacity = useTransform(ret, (r) => 1 - Math.min(1, r * 2.2));
   const returnOpacity = useTransform(ret, (r) => clamp01((r - 0.55) / 0.45));
@@ -445,6 +462,10 @@ export default function CaseView({ project }: { project: Project }) {
                 zIndex: 54,
                 opacity: introOpacity,
                 y: introY,
+                visibility: introVisibility,
+                // Its own compositing layer, so the fade is the compositor's
+                // job rather than a repaint Safari may decide it can skip.
+                willChange: "opacity, transform",
               }}
             >
               <motion.h1
@@ -540,7 +561,22 @@ export default function CaseView({ project }: { project: Project }) {
                   <dt style={{ ...typeStyle(TYPE.label, ts), color: "var(--ink-3)" }}>
                     COLLABORATORS
                   </dt>
-                  <dd style={{ margin: 0 }}>{project.collaborators}</dd>
+                  <dd style={{ margin: 0 }}>
+                    {/* A name is one word to the line-breaker: it wraps
+                        between people — at a comma or an "and" — never
+                        through one. */}
+                    {project.collaborators
+                      .split(/(,\s*|\s+and\s+)/)
+                      .map((part, i) =>
+                        i % 2 ? (
+                          part
+                        ) : (
+                          <span key={i} style={{ whiteSpace: "nowrap" }}>
+                            {part}
+                          </span>
+                        ),
+                      )}
+                  </dd>
                 </div>
               </motion.dl>
             </motion.div>
@@ -599,7 +635,7 @@ export default function CaseView({ project }: { project: Project }) {
                 the intro column instead, with its own arrival.
               */}
               {mobile ? (
-                <ShotTitle index={0} active={active} title={project.title} meta={project.year} />
+                <ShotTitle index={0} active={active} title={project.title} meta={project.yearLong ?? project.year} />
               ) : null}
               {project.shots.map((shot, i) => (
                 <ShotTitle

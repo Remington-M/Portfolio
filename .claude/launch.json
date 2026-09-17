@@ -10,6 +10,15 @@
       ],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "copy-editor",
+      "runtimeExecutable": "/opt/homebrew/opt/node@22/bin/npm",
+      "runtimeArgs": [
+        "run",
+        "copy"
+      ],
+      "port": 3210
     }
   ]
 }

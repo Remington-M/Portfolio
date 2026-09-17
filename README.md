@@ -60,7 +60,8 @@ snaps, and scroll drives the cards directly.
 | `lib/design.ts` | Design tokens, the card ratio rule, easing and spring configs |
 | `lib/geometry.ts` | Deck, project-frame and carousel geometry — all pure functions |
 | `lib/spring.ts` | Spring integrator that can be stepped or snapped per frame |
-| `lib/projects.ts` | Project data. Placeholder copy and stripe fills live here |
+| `lib/projects.ts` | Project structure: which clips, in what order, at what shape |
+| `content/copy.json` | Everything written: overviews, collaborators, shot titles, the About page |
 | `components/media/` | The persistent layer and shared stage state |
 | `components/home/` | Hero, deck scrubber, ledger |
 | `components/case/` | Project page — desktop shot stepping, mobile carousel |
@@ -161,20 +162,45 @@ Two things in it worth knowing:
   with the colour. Eight seconds, for a process that really takes fifteen
   minutes. Tunables are at the top of `lib/polaroid.ts`.
 
+The back of the print carries the caption in Remington's own hand. Photograph
+the words in marker on white paper, save it as `media-source/about/back.jpg`,
+and run:
+
+```bash
+npm run about:back -- --rotate ccw    # ccw, cw or 180, if the photo is turned
+```
+
+That lifts the ink off the paper into `public/about/back.png`, white on
+transparent, and the print draws it as white marker on the black sheet. Uneven
+light across the photo does not matter: every pixel is judged against the paper
+around it. Delete the PNG to get the typed caption back.
+
 The picture is `public/about/portrait.jpg`: a 1400px square cut from the
 original, which is what the window shows and all a ~300px print needs. Keep
 originals out of `public/` — everything there is published, and a camera
 export runs to megabytes. `scripts/about-placeholder.mjs` draws the stand-in
 that was there before, if one is ever needed again.
 
-## Still placeholder
+## Editing the copy
 
-- **Copy.** Five of six projects have placeholder overview text and collaborator
-  names. Google Pixel has real copy.
-- **About page.** The layout, the Polaroid, the photo and the role line are
-  real; the copy in `lib/about.ts` is not.
+Everything written on the site lives in `content/copy.json`, and there is a
+local editor for it:
+
+```bash
+npm run copy                  # http://localhost:3210, alongside npm run dev
+```
+
+Every field saves itself a moment after you stop typing, and the dev server
+reloads whatever page is open, so the site is the preview. Fields still holding
+placeholder text are outlined. Shot titles are keyed by the clip's file name,
+so reordering shots in `lib/projects.ts` does not lose them; a new clip shows
+up in the editor as an empty field, and on the site as `Untitled` until it is
+named.
+
+## Before shipping
+
 - **Device frames in the Google footage.** The design draws no bezel — the
-  viewer is a rounded rectangle holding the picture and nothing else. Six of the
-  Pixel and gesture clips were exported with a phone body rendered onto white,
-  so those play a drawn phone inside the frame. Re-exporting the screen alone is
-  the fix; cropping them here would guess at the screen rect.
+  viewer is a rounded rectangle holding the picture and nothing else. Some of
+  the Pixel and gesture clips were exported with a phone body rendered onto
+  white, so those play a drawn phone inside the frame. Re-exporting the screen
+  alone is the fix; cropping them here would guess at the screen rect.

@@ -1,5 +1,7 @@
 "use client";
 
+import type React from "react";
+import Link from "next/link";
 import { motion, useReducedMotion } from "motion/react";
 import { HOUSE_CSS, LEDGER_IN, TYPE, type as typeStyle } from "@/lib/design";
 import { projects } from "@/lib/projects";
@@ -9,9 +11,13 @@ import { heroSpring } from "@/lib/heroTuning";
 /**
  * Desktop ledger. The cards carry no titles — this names the project.
  *
- * Rows scroll the deck rather than navigating, which is the designed behaviour.
- * Real links to every project live in the hidden nav on the home page, so
- * crawlers and screen readers still reach them directly.
+ * A resting row scrolls the deck to its project, which is the designed
+ * behaviour. The HIGHLIGHTED row is a link to the project it names — the same
+ * link the front card carries, so it opens the page the same way. The card is
+ * the intended door, but nothing on the screen says so, and a name lit up in
+ * a list is something people already know how to click. Real links to every
+ * project also live in the hidden nav on the home page, for crawlers and
+ * screen readers.
  */
 export default function Ledger({
   front,
@@ -61,24 +67,24 @@ export default function Ledger({
               },
             }}
           >
-            <button
-              type="button"
-              onClick={() => onJump(i)}
+            {/*
+              One element whichever state the row is in. It was a link when
+              lit and a button otherwise, and the swap remounted the text as
+              a row lit up — so the size and colour transitions restarted
+              from nothing, and a jump across the deck chopped through every
+              row it passed instead of gliding.
+            */}
+            <Link
+              href={`/work/${project.slug}`}
+              draggable={false}
               aria-current={on ? "true" : undefined}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr auto",
-                gap: 24 * ts,
-                alignItems: "center",
-                width: "100%",
-                padding: `${12 * ts}px 0`,
-                border: 0,
-                background: "none",
-                color: "inherit",
-                textAlign: "left",
-                cursor: "pointer",
-                font: "inherit",
+              onClick={(e) => {
+                if (on) return;
+                // A resting row scrolls the deck; only the lit one navigates.
+                e.preventDefault();
+                onJump(i);
               }}
+              style={rowStyle(ts)}
             >
               <span
                 style={{
@@ -104,10 +110,28 @@ export default function Ledger({
               >
                 {project.year}
               </span>
-            </button>
+            </Link>
           </motion.li>
         );
       })}
     </ol>
   );
+}
+
+function rowStyle(ts: number): React.CSSProperties {
+  return {
+    display: "grid",
+    gridTemplateColumns: "1fr auto",
+    gap: 24 * ts,
+    alignItems: "center",
+    width: "100%",
+    padding: `${12 * ts}px 0`,
+    border: 0,
+    background: "none",
+    color: "inherit",
+    textAlign: "left",
+    cursor: "pointer",
+    font: "inherit",
+    textDecoration: "none",
+  };
 }

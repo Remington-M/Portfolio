@@ -1630,9 +1630,17 @@ export default function MediaLayer() {
         fc.value,
       );
       let target: Geo;
-      if (mode === "case") {
-        // The same element that was on the deck, retargeted to the page's
-        // viewer — and it is also where every other card is headed.
+      if (mode === "case" && shotShapes.length > 0) {
+        /**
+         * The same element that was on the deck, retargeted to the page's
+         * viewer — and it is also where every other card is headed.
+         *
+         * `shotShapes` can still be empty here: `mode` is read off the
+         * pathname during render and the selection lands a render later, so
+         * a frame can run on a project page before it knows the project. On
+         * that frame the cards keep their deck geometry, which is where they
+         * are anyway; the next frame has the shapes and carries on from it.
+         */
         const viewer = caseFrame(cpv, shotShapes, stage, frameFixed);
         target = i === sel ? viewer : tidied(deck, viewer, reduced);
       } else if (dragging && g.touch) {

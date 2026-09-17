@@ -33,6 +33,14 @@ type Props = {
   alt: string;
   /** What is written on the back. One entry per line. */
   back: readonly string[];
+  /**
+   * The same words in the author's own hand: a white-on-transparent image of
+   * the strokes, drawn by `scripts/about-back.mjs` from a photo of marker on
+   * paper. When it is set it replaces the typed caption on the print; `back`
+   * stays as what a screen reader hears. If it fails to load, the caption is
+   * typed as before.
+   */
+  writing?: string;
   /** Card width in CSS pixels. Height follows the print's proportions. */
   width: number;
   /**
@@ -56,7 +64,7 @@ type Props = {
  * or the context is lost the same button becomes a flat CSS flip of the same
  * two faces, with the development approximated in CSS filters.
  */
-export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
+export default function Polaroid({ src, alt, back, writing, width, lean = 0 }: Props) {
   const reduced = useReducedMotion() ?? false;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [flipped, setFlipped] = useState(false);
@@ -323,7 +331,7 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
     img.src = asset(src);
 
     let backDrawn = false;
-    void drawBack(back).then((surface) => {
+    void drawBack(back, writing ? asset(writing) : undefined).then((surface) => {
       if (dead || !surface) return;
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, backTex);
@@ -680,7 +688,7 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
     // Size is read live from `dims`; only the content and motion preference
     // rebuild the scene.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src, back, reduced, lean]);
+  }, [src, back, writing, reduced, lean]);
 
   /* ---------------- pointer ---------------- */
   const onMove = useCallback(
@@ -775,9 +783,12 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
             </span>
           </span>
           <span className="polaroid-face polaroid-back">
-            {back.map((line, i) => (
-              <span key={i}>{line}</span>
-            ))}
+            {writing ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img className="polaroid-writing" src={asset(writing)} alt="" draggable={false} />
+            ) : (
+              back.map((line, i) => <span key={i}>{line}</span>)
+            )}
           </span>
         </span>
         {/* What a screen reader gets, whichever way the canvas is drawn. */}
@@ -904,7 +915,10 @@ function solid(
  * set in the site's mono. Drawn on a 2D canvas so it can use the real
  * webfont, then handed to the shader as a texture.
  * ------------------------------------------------------------------ */
-async function drawBack(lines: readonly string[]): Promise<HTMLCanvasElement | null> {
+async function drawBack(
+  lines: readonly string[],
+  writing?: string,
+): Promise<HTMLCanvasElement | null> {
   const W = 1024;
   const H = Math.round(W * PRINT.h);
   const c = document.createElement("canvas");
@@ -964,12 +978,38 @@ async function drawBack(lines: readonly string[]): Promise<HTMLCanvasElement | n
     ctx.fillRect(x, px(2.2), 1, px(2.4));
   }
 
-  // The caption.
+  const left = px(9);
+  const hand = writing ? await loadImage(writing) : null;
+  if (hand) {
+    /**
+     * White marker on black paper. The strokes sit in the sheet's open
+     * middle, above the pod, and fitted to it. Marker on paper is not quite
+     * opaque, and it bleeds a hair: the ink is laid down a touch below full
+     * white, and a faint, wider copy underneath softens the edge.
+     */
+    const boxX = px(6);
+    const boxY = px(7);
+    const boxW = W - px(12);
+    const boxH = podTop - px(4) - boxY;
+    const s = Math.min(boxW / hand.naturalWidth, boxH / hand.naturalHeight);
+    const dw = hand.naturalWidth * s;
+    const dh = hand.naturalHeight * s;
+    const dx = boxX + (boxW - dw) / 2;
+    const dy = boxY + (boxH - dh) / 2;
+    ctx.globalAlpha = 0.22;
+    ctx.filter = `blur(${Math.max(1, W / 700)}px)`;
+    ctx.drawImage(hand, dx, dy, dw, dh);
+    ctx.filter = "none";
+    ctx.globalAlpha = 0.92;
+    ctx.drawImage(hand, dx, dy, dw, dh);
+    ctx.globalAlpha = 1;
+  }
+
+  // The caption, typed, when there is no handwriting to show.
   ctx.fillStyle = "rgba(226, 220, 208, 0.82)";
   ctx.textBaseline = "alphabetic";
-  const left = px(9);
   let y = px(14);
-  lines.forEach((line, i) => {
+  (hand ? [] : lines).forEach((line, i) => {
     ctx.font = i === 0 ? labelFont : valueFont;
     // Tracked like the site's labels: letter by letter.
     const track = px(i === 0 ? 0.32 : 0.12);
@@ -987,4 +1027,15 @@ async function drawBack(lines: readonly string[]): Promise<HTMLCanvasElement | n
   ctx.fillText("INTEGRAL FILM \u00b7 79 \u00d7 79 MM", left, H - px(4.2));
 
   return c;
+}
+
+/** Resolves to null rather than throwing, so a missing file means "typed". */
+function loadImage(src: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.decoding = "async";
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
 }

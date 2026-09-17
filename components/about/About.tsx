@@ -7,6 +7,7 @@ import { TYPE, type as typeStyle } from "@/lib/design";
 import { about } from "@/lib/about";
 import Polaroid from "./Polaroid";
 import PolaroidTunePanel from "./PolaroidTunePanel";
+import ClaudeMark from "./ClaudeMark";
 
 /**
  * The About page.
@@ -76,29 +77,48 @@ export default function About() {
       <div style={{ ...typeStyle(TYPE.label, ts), color: "var(--ink-3)" }}>
         ABOUT
       </div>
-      <p
-        style={{
-          ...typeStyle(TYPE.aboutLead, ts),
-          margin: 0,
-          color: "var(--ink)",
-          textWrap: "pretty",
-        }}
-      >
-        {about.lead}
-      </p>
-      {about.body.map((para, i) => (
-        <p
-          key={i}
-          style={{
-            ...typeStyle(TYPE.bodyS, ts),
-            margin: 0,
-            color: "var(--ink-2)",
-            textWrap: "pretty",
-          }}
-        >
-          {para}
-        </p>
-      ))}
+      {/*
+        The mark signs the copy off in line with its last word, the way a
+        name follows a sentence — so the paragraph it belongs to loses its
+        final period, and the mark stands where the period was. Empty
+        paragraphs are skipped rather than rendered as a blank line.
+      */}
+      {(() => {
+        const paras = [about.lead, ...about.body.filter((t) => t.trim())];
+        const last = paras.length - 1;
+        return paras.map((text, i) => {
+          const lead = i === 0;
+          const signed = i === last;
+          const shown = signed ? text.replace(/[\s.]+$/, "") : text;
+          const size = (lead ? TYPE.aboutLead.size : TYPE.bodyS.size) * ts;
+          return (
+            <p
+              key={i}
+              style={{
+                ...typeStyle(lead ? TYPE.aboutLead : TYPE.bodyS, ts),
+                margin: 0,
+                color: lead ? "var(--ink)" : "var(--ink-2)",
+                textWrap: "pretty",
+              }}
+            >
+              {shown}
+              {signed ? (
+                <span
+                  style={{
+                    display: "inline-block",
+                    verticalAlign: "-0.14em",
+                    marginLeft: "0.3em",
+                    // Kept with the last word: the mark never starts a line.
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <ClaudeMark size={size * 0.95} />
+                </span>
+              ) : null}
+            </p>
+          );
+        });
+      })()}
       <div style={{ height: 1, marginTop: 8 * ts, background: "var(--rule)" }} />
       <dl
         style={{
@@ -134,6 +154,7 @@ export default function About() {
       src={about.photo}
       alt={about.alt}
       back={about.back}
+      writing={about.writing}
       width={printW}
       lean={LAYOUT.lean}
     />
