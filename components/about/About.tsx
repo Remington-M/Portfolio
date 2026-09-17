@@ -6,6 +6,8 @@ import { useStage } from "@/components/media/stage";
 import { TYPE, type as typeStyle } from "@/lib/design";
 import { about } from "@/lib/about";
 import Polaroid from "./Polaroid";
+import PolaroidTunePanel from "./PolaroidTunePanel";
+import ClaudeMark from "./ClaudeMark";
 
 /**
  * The About page.
@@ -17,17 +19,22 @@ import Polaroid from "./Polaroid";
  * since the document itself never does on this site.
  */
 
-/** Authored against the 1440 stage, like everything else. */
+/**
+ * Authored against the 1440 stage, like everything else.
+ *
+ * The rails are the home page's: the print's left edge sits on the 64px
+ * rail the nav keeps, and the type column's right edge on the same rail at
+ * the other side. The page used to keep the print 104 in and the column 180
+ * from the right, which read as tighter than the pages either side of it.
+ */
 const LAYOUT = {
-  /** The left margin, shared with the header. */
+  /** The margin, shared with the header. */
   rail: 64,
-  /** The print's box: from the rail, this wide, the print set in from its left. */
-  printBox: 600,
-  printInset: 40,
+  /** The print, its left edge on the rail. */
   printWidth: 440,
-  /** The type column. */
-  colLeft: 800,
-  colWidth: 460,
+  /** The type column, its right edge on the right rail. Wide enough to
+   *  come across toward the print rather than sit as a strip at the edge. */
+  colWidth: 600,
   lean: -2,
 } as const;
 
@@ -44,21 +51,22 @@ export default function About() {
     ? Math.min(stage.w * 0.66, 300)
     : Math.round(Math.min(LAYOUT.printWidth * sx, stage.h * 0.52));
 
-  const rise = (i: number) =>
-    reduced
-      ? {}
-      : {
-          initial: { opacity: 0, y: 12 },
-          animate: { opacity: 1, y: 0 },
-          transition: {
-            delay: 0.45 + i * 0.08,
-            duration: 0.7,
-            ease: [0.22, 1, 0.36, 1] as const,
-          },
-        };
+  /**
+   * The column fades in as one block, no rise and no stagger: the print's
+   * arrival is the motion on this page, and type stepping in beside it
+   * was a second thing to watch.
+   */
+  const fade = reduced
+    ? {}
+    : {
+        initial: { opacity: 0 },
+        animate: { opacity: 1 },
+        transition: { delay: 0.35, duration: 0.5, ease: "linear" as const },
+      };
 
   const column = (
-    <div
+    <motion.div
+      {...fade}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -66,40 +74,53 @@ export default function About() {
         width: mobile ? "100%" : LAYOUT.colWidth * sx,
       }}
     >
-      <motion.div {...rise(0)} style={{ ...typeStyle(TYPE.label, ts), color: "var(--ink-3)" }}>
+      <div style={{ ...typeStyle(TYPE.label, ts), color: "var(--ink-3)" }}>
         ABOUT
-      </motion.div>
-      <motion.p
-        {...rise(1)}
-        style={{
-          ...typeStyle(TYPE.aboutLead, ts),
-          margin: 0,
-          color: "var(--ink)",
-          textWrap: "pretty",
-        }}
-      >
-        {about.lead}
-      </motion.p>
-      {about.body.map((para, i) => (
-        <motion.p
-          key={i}
-          {...rise(2 + i)}
-          style={{
-            ...typeStyle(TYPE.bodyS, ts),
-            margin: 0,
-            color: "var(--ink-2)",
-            textWrap: "pretty",
-          }}
-        >
-          {para}
-        </motion.p>
-      ))}
-      <motion.div
-        {...rise(2 + about.body.length)}
-        style={{ height: 1, marginTop: 8 * ts, background: "var(--rule)" }}
-      />
-      <motion.dl
-        {...rise(3 + about.body.length)}
+      </div>
+      {/*
+        The mark signs the copy off in line with its last word, the way a
+        name follows a sentence — so the paragraph it belongs to loses its
+        final period, and the mark stands where the period was. Empty
+        paragraphs are skipped rather than rendered as a blank line.
+      */}
+      {(() => {
+        const paras = [about.lead, ...about.body.filter((t) => t.trim())];
+        const last = paras.length - 1;
+        return paras.map((text, i) => {
+          const lead = i === 0;
+          const signed = i === last;
+          const shown = signed ? text.replace(/[\s.]+$/, "") : text;
+          const size = (lead ? TYPE.aboutLead.size : TYPE.bodyS.size) * ts;
+          return (
+            <p
+              key={i}
+              style={{
+                ...typeStyle(lead ? TYPE.aboutLead : TYPE.bodyS, ts),
+                margin: 0,
+                color: lead ? "var(--ink)" : "var(--ink-2)",
+                textWrap: "pretty",
+              }}
+            >
+              {shown}
+              {signed ? (
+                <span
+                  style={{
+                    display: "inline-block",
+                    verticalAlign: "-0.14em",
+                    marginLeft: "0.3em",
+                    // Kept with the last word: the mark never starts a line.
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <ClaudeMark size={size * 0.95} />
+                </span>
+              ) : null}
+            </p>
+          );
+        });
+      })()}
+      <div style={{ height: 1, marginTop: 8 * ts, background: "var(--rule)" }} />
+      <dl
         style={{
           display: "flex",
           flexWrap: "wrap",
@@ -124,8 +145,8 @@ export default function About() {
             </dd>
           </div>
         ))}
-      </motion.dl>
-    </div>
+      </dl>
+    </motion.div>
   );
 
   const print = (
@@ -133,6 +154,7 @@ export default function About() {
       src={about.photo}
       alt={about.alt}
       back={about.back}
+      writing={about.writing}
       width={printW}
       lean={LAYOUT.lean}
     />
@@ -152,7 +174,6 @@ export default function About() {
           WebkitOverflowScrolling: "touch",
         }}
       >
-        <Header variant="about" />
         <div
           style={{
             position: "relative",
@@ -166,9 +187,11 @@ export default function About() {
             padding: `${stage.top + 96 * stage.s}px ${24 * sx}px ${64 * stage.s}px`,
           }}
         >
+          <Header variant="about" />
           <div style={{ display: "flex", justifyContent: "center" }}>{print}</div>
           {column}
         </div>
+        <PolaroidTunePanel />
       </main>
     );
   }
@@ -176,16 +199,21 @@ export default function About() {
   const rail = LAYOUT.rail * sx;
   return (
     <main
-      className="no-scrollbar"
       style={{
         position: "fixed",
         inset: 0,
-        overflowY: "auto",
+        // Nothing to scroll to on desktop: the page is one screen, and the
+        // print's canvas, which is much larger than the print for the swing
+        // and the shadow, must not be what makes it scroll.
+        overflow: "hidden",
         overscrollBehaviorY: "none",
-        overflowX: "hidden",
       }}
     >
-      <Header variant="about" />
+      {/*
+        The header lives inside the stage box, as it does on the home page,
+        so the nav sits in the same place on both. Mounted on the scroller
+        itself it took its margin from the window instead of the stage.
+      */}
       <div
         style={{
           position: "relative",
@@ -195,17 +223,18 @@ export default function About() {
           margin: "0 auto",
         }}
       >
+        <Header variant="about" />
         <div
           style={{
             position: "absolute",
             left: rail,
             top: 0,
             bottom: 0,
-            width: LAYOUT.printBox * sx,
+            // Exactly the print's width: the print centres itself in
+            // whatever box it is given, and a wider one moved it off the rail.
+            width: printW,
             display: "flex",
             alignItems: "center",
-            justifyContent: "flex-start",
-            paddingLeft: LAYOUT.printInset * sx,
           }}
         >
           {print}
@@ -213,7 +242,7 @@ export default function About() {
         <div
           style={{
             position: "absolute",
-            left: LAYOUT.colLeft * sx,
+            right: rail,
             top: 0,
             bottom: 0,
             display: "flex",
@@ -223,6 +252,7 @@ export default function About() {
           {column}
         </div>
       </div>
+      <PolaroidTunePanel />
     </main>
   );
 }

@@ -52,6 +52,14 @@ export type StageState = {
    * find the cards below the stage.
    */
   deal: MotionValue<number>;
+  /**
+   * The viewer's box on a project page, in stage px, written by the layer
+   * every frame from the card's own springs. Anything that has to sit
+   * beside the viewer — the step arrows — reads these and so moves exactly
+   * with it, overshoot and all, rather than on a spring of its own that
+   * could only ever approximate the container's.
+   */
+  viewer: { x: MotionValue<number>; y: MotionValue<number>; w: MotionValue<number>; h: MotionValue<number> };
   /** Project page shot position. */
   cp: MotionValue<number>;
   /** Index of the project whose card is the shared element, or -1. */
@@ -126,6 +134,7 @@ export function StageProvider({ children }: { children: ReactNode }) {
       p: motionValue(openingIndex()),
       pTarget: motionValue(openingIndex()),
       pi: motionValue(0),
+      viewer: { x: motionValue(0), y: motionValue(0), w: motionValue(0), h: motionValue(0) },
       deal: motionValue((pathname ?? "/").startsWith("/work/") ? 1 : 0),
       cp: motionValue(0),
       selected: motionValue(-1),
@@ -159,7 +168,13 @@ export function StageProvider({ children }: { children: ReactNode }) {
       ? "about"
       : "home";
 
-  const [viewport, setViewport] = useState({ w: 0, h: 0, mobile: false });
+  const [viewport, setViewport] = useState({
+    w: 0,
+    h: 0,
+    mobile: false,
+    safeTop: 0,
+    safeBottom: 0,
+  });
   const [transitionKey, setTransitionKey] = useState(0);
 
   /**
@@ -212,10 +227,25 @@ export function StageProvider({ children }: { children: ReactNode }) {
       const h = window.innerHeight;
       values.vw.set(w);
       values.vh.set(h);
+      /**
+       * The device insets, read off the custom properties globals.css sets
+       * from `env()`. CSS is the only place they exist, and the deck's
+       * geometry is JS, so they are measured here once per resize.
+       */
+      const root = getComputedStyle(document.documentElement);
+      const safeTop = parseFloat(root.getPropertyValue("--safe-top")) || 0;
+      const safeBottom = parseFloat(root.getPropertyValue("--safe-bottom")) || 0;
       setViewport((prev) => {
         const mobile = w < BREAKPOINT.desktop;
-        if (prev.w === w && prev.h === h && prev.mobile === mobile) return prev;
-        return { w, h, mobile };
+        if (
+          prev.w === w &&
+          prev.h === h &&
+          prev.mobile === mobile &&
+          prev.safeTop === safeTop &&
+          prev.safeBottom === safeBottom
+        )
+          return prev;
+        return { w, h, mobile, safeTop, safeBottom };
       });
     };
     sync();
@@ -228,8 +258,12 @@ export function StageProvider({ children }: { children: ReactNode }) {
   }, [values.vw, values.vh]);
 
   const stage = useMemo(
-    () => makeStage(viewport.w, viewport.h, viewport.mobile),
-    [viewport.w, viewport.h, viewport.mobile],
+    () =>
+      makeStage(viewport.w, viewport.h, viewport.mobile, {
+        top: viewport.safeTop,
+        bottom: viewport.safeBottom,
+      }),
+    [viewport.w, viewport.h, viewport.mobile, viewport.safeTop, viewport.safeBottom],
   );
 
   const state = useMemo<StageState>(

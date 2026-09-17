@@ -6,23 +6,26 @@ import { asset } from "@/lib/asset";
 import {
   DEVELOP,
   FRAG,
+  FRAG_BLUR,
+  FRAG_COMPOSITE,
   MESH,
   POLAROID_MOTION as M,
   PRINT,
   SHADOW,
   VERT,
+  VERT_QUAD,
   buildMesh,
-  buildWalls,
 } from "@/lib/polaroid";
 import {
   clamp,
   isAtRest,
   kickSpring,
   spring,
+  springConfig,
   stepSpring,
   REST,
-  type Spring,
 } from "@/lib/spring";
+import { onPolaroidFlip, onPolaroidReplay, polaroidTune as T } from "@/lib/polaroidTuning";
 
 type Props = {
   /** The picture. Anything under `public/`; cropped to the square window. */
@@ -30,6 +33,14 @@ type Props = {
   alt: string;
   /** What is written on the back. One entry per line. */
   back: readonly string[];
+  /**
+   * The same words in the author's own hand: a white-on-transparent image of
+   * the strokes, drawn by `scripts/about-back.mjs` from a photo of marker on
+   * paper. When it is set it replaces the typed caption on the print; `back`
+   * stays as what a screen reader hears. If it fails to load, the caption is
+   * typed as before.
+   */
+  writing?: string;
   /** Card width in CSS pixels. Height follows the print's proportions. */
   width: number;
   /**
@@ -53,7 +64,7 @@ type Props = {
  * or the context is lost the same button becomes a flat CSS flip of the same
  * two faces, with the development approximated in CSS filters.
  */
-export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
+export default function Polaroid({ src, alt, back, writing, width, lean = 0 }: Props) {
   const reduced = useReducedMotion() ?? false;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [flipped, setFlipped] = useState(false);
@@ -69,6 +80,7 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
     flip: (to: number) => void;
     tilt: (x: number, y: number) => void;
     resize: () => void;
+    replay: () => void;
   } | null>(null);
 
   const height = width * PRINT.h;
@@ -91,13 +103,16 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
    * back the way it came.
    */
   const toggle = useCallback(() => {
-    const to = flipTarget.current + Math.PI;
+    const to = flipTarget.current + T.flipDir * Math.PI;
     flipTarget.current = to;
     const n = Math.round(to / Math.PI);
-    setFlipped(n % 2 === 1);
+    setFlipped(Math.abs(n) % 2 === 1);
     setTurns(n);
     controls.current?.flip(to);
   }, []);
+  /* The tuning panel can ask for a turn, or for the arrival again. */
+  useEffect(() => onPolaroidFlip(toggle), [toggle]);
+  useEffect(() => onPolaroidReplay(() => controls.current?.replay()), []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -112,8 +127,10 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
       setMode("css");
       return;
     }
-    const program = compile(gl);
-    if (!program) {
+    const program = compile(gl, VERT, FRAG);
+    const blurProgram = compile(gl, VERT_QUAD, FRAG_BLUR);
+    const compProgram = compile(gl, VERT_QUAD, FRAG_COMPOSITE);
+    if (!program || !blurProgram || !compProgram) {
       setMode("css");
       return;
     }
@@ -127,13 +144,91 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
     const ibo = gl.createBuffer();
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, mesh.index, gl.STATIC_DRAW);
-    const walls = buildWalls(PRINT.radius, PRINT.w, PRINT.h, PRINT.wallInset);
-    const wvbo = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, wvbo);
-    gl.bufferData(gl.ARRAY_BUFFER, walls.data, gl.STATIC_DRAW);
-    const wibo = gl.createBuffer();
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, wibo);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, walls.index, gl.STATIC_DRAW);
+    /* A full-screen triangle for the blur and composite passes. */
+    const quadVbo = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadVbo);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    const aPosBlur = gl.getAttribLocation(blurProgram, "aPos");
+    const aPosComp = gl.getAttribLocation(compProgram, "aPos");
+    const uBlurTex = gl.getUniformLocation(blurProgram, "uTex");
+    const uBlurStep = gl.getUniformLocation(blurProgram, "uStep");
+    const uCompTex = gl.getUniformLocation(compProgram, "uTex");
+    const uCompColor = gl.getUniformLocation(compProgram, "uColor");
+    const uCompAlpha = gl.getUniformLocation(compProgram, "uAlpha");
+    const uCompShift = gl.getUniformLocation(compProgram, "uShift");
+
+    /**
+     * Offscreen targets for the shadow: a ping-pong pair per layer, each
+     * pair sized so the layer's blur is a few texels wide. A Gaussian is
+     * only smooth when its taps are close together, so a wide blur is done
+     * on a small texture and scaled up, never with a wide stride on a big
+     * one — that under-samples, and the shadow comes out gridded.
+     */
+    type Target = { fbo: WebGLFramebuffer; tex: WebGLTexture };
+    type Pair = { a: Target; b: Target; w: number; h: number; sigma: number };
+    const pairs: Pair[] = [];
+    const makeTarget = (w: number, h: number): Target | null => {
+      const tex = gl.createTexture();
+      const fbo = gl.createFramebuffer();
+      if (!tex || !fbo) return null;
+      // On the blur's own unit: binding on whichever unit happens to be
+      // active would replace the photo or the back of the print.
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      if (!ok) {
+        gl.deleteTexture(tex);
+        gl.deleteFramebuffer(fbo);
+        return null;
+      }
+      return { fbo, tex };
+    };
+    const freeTargets = () => {
+      for (const p of pairs) {
+        for (const t of [p.a, p.b]) {
+          gl.deleteTexture(t.tex);
+          gl.deleteFramebuffer(t.fbo);
+        }
+      }
+      pairs.length = 0;
+    };
+    /**
+     * Two passes each way with the kernel's own sigma of two texels gives
+     * a total sigma of 2√2 texels; each layer's texture is scaled so its
+     * blur in pixels comes to that. Rebuilt when the size or the softness
+     * changes.
+     */
+    const SIGMA_TEXELS = 2 * Math.SQRT2;
+    let pairsKey = "";
+    const sizeTargets = (w: number, h: number, pxPerCard: number, soft: number) => {
+      const key = `${w}:${h}:${pxPerCard.toFixed(1)}:${soft.toFixed(3)}`;
+      if (key === pairsKey && pairs.length === SHADOW.layers.length) return;
+      pairsKey = key;
+      freeTargets();
+      for (const layer of SHADOW.layers) {
+        const sigmaPx = Math.max(0.5, layer.blur * soft * pxPerCard);
+        const scale = clamp(SIGMA_TEXELS / sigmaPx, 1 / 64, SHADOW.scale);
+        const tw = Math.max(2, Math.round(w * scale));
+        const th = Math.max(2, Math.round(h * scale));
+        const a = makeTarget(tw, th);
+        const b = makeTarget(tw, th);
+        if (!a || !b) {
+          freeTargets();
+          break;
+        }
+        pairs.push({ a, b, w: tw, h: th, sigma: sigmaPx * scale });
+      }
+      gl.activeTexture(gl.TEXTURE0);
+    };
+
     gl.useProgram(program);
     const aUV = gl.getAttribLocation(program, "aUV");
     const aH = gl.getAttribLocation(program, "aH");
@@ -149,16 +244,6 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
       gl.vertexAttrib1f(aH, h);
       gl.disableVertexAttribArray(aDir);
       gl.vertexAttrib2f(aDir, 0, 0);
-    };
-    const useWalls = () => {
-      gl.bindBuffer(gl.ARRAY_BUFFER, wvbo);
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, wibo);
-      gl.enableVertexAttribArray(aUV);
-      gl.vertexAttribPointer(aUV, 2, gl.FLOAT, false, 20, 0);
-      gl.enableVertexAttribArray(aH);
-      gl.vertexAttribPointer(aH, 1, gl.FLOAT, false, 20, 8);
-      gl.enableVertexAttribArray(aDir);
-      gl.vertexAttribPointer(aDir, 2, gl.FLOAT, false, 20, 12);
     };
 
     const u = (name: string) => gl.getUniformLocation(program, name);
@@ -179,18 +264,16 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
       thick: u("uThick"),
       wall: u("uWall"),
       curl: u("uCurl"),
+      curlLen: u("uCurlLen"),
       shadowSlope: u("uShadowSlope"),
-      shadowSpread: u("uShadowSpread"),
       photo: u("uPhoto"),
       back: u("uBack"),
       window: u("uWindow"),
       fit: u("uFit"),
       radius: u("uRadius"),
       develop: u("uDevelop"),
-      shadowAlpha: u("uShadowAlpha"),
-      shadowSoft: u("uShadowSoft"),
-      shadowColor: u("uShadowColor"),
       paper: u("uPaper"),
+      opacity: u("uOpacity"),
       camPos: u("uCamPos"),
     };
 
@@ -206,7 +289,6 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
     );
     gl.uniform1f(U.radius, PRINT.radius);
     gl.uniform1f(U.thick, PRINT.thickness);
-    gl.uniform1f(U.curl, M.curl);
     gl.uniform3f(U.paper, 0.968, 0.962, 0.948);
     gl.uniform1i(U.photo, 0);
     gl.uniform1i(U.back, 1);
@@ -249,7 +331,7 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
     img.src = asset(src);
 
     let backDrawn = false;
-    void drawBack(back).then((surface) => {
+    void drawBack(back, writing ? asset(writing) : undefined).then((surface) => {
       if (dead || !surface) return;
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, backTex);
@@ -267,16 +349,44 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
       flexY: spring(0),
       tiltX: spring(0),
       tiltY: spring(0),
-      y: spring(reduced ? 0 : M.entry.fromY),
-      scale: spring(reduced ? 1 : M.entry.fromScale),
-      roll: spring(reduced ? restRoll : M.entry.fromRoll),
+      scale: spring(1),
+      fade: spring(1),
+      /** The curl, as a multiple of its rest; large on arrival. */
+      curlIn: spring(1),
+      roll: spring(restRoll),
     };
     const target = { flip: flipTarget.current, tiltX: 0, tiltY: 0 };
-    let landedAt: number | null = reduced ? performance.now() : null;
-    let develop = reduced ? 1 : 0;
+    let landedAt: number | null = null;
+    let develop = 0;
+    /** When the arrival may begin; the print holds invisible until then. */
+    let startAt = 0;
+    /** The arrival from the top: small, clear, over-curled. */
+    const arrive = () => {
+      startAt = performance.now() + T.entryDelay * 1000;
+      if (reduced) {
+        S.scale.value = 1;
+        S.fade.value = 1;
+        S.curlIn.value = 1;
+        landedAt = performance.now();
+        develop = 1;
+        return;
+      }
+      S.scale.value = T.entryFromScale;
+      S.scale.velocity = 0;
+      S.fade.value = 0;
+      S.fade.velocity = 0;
+      // From nearly flat, kicked upward: it rises through its rest to a
+      // peak and settles back, rather than starting curled and relaxing.
+      S.curlIn.value = T.entryFromCurl;
+      S.curlIn.velocity = T.entryCurlKick;
+      landedAt = null;
+      develop = 0;
+    };
+    arrive();
 
     /* ---------------- sizing ---------------- */
     let dpr = 1;
+    let proj: [number, number] = [1, 1];
     const size = () => {
       /**
        * Drawn at one and a half times the display's own density, up to three
@@ -295,14 +405,17 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
       gl.viewport(0, 0, w, h);
       // Pixels per card unit, then clip units per pixel.
       const px = width * dpr;
-      gl.uniform2f(U.proj, (px * 2) / w, (px * 2) / h);
+      proj = [(px * 2) / w, (px * 2) / h];
+      gl.useProgram(program);
+      gl.uniform2f(U.proj, proj[0], proj[1]);
+      sizeTargets(w, h, px, T.shadowSoft);
     };
     size();
 
     controls.current = {
       flip: (to) => {
         target.flip = to;
-        if (!reduced) kickSpring(S.flexX, M.flexKick.turn);
+        if (!reduced) kickSpring(S.flexX, T.flexKickTurn);
         wake();
       },
       tilt: (x, y) => {
@@ -314,13 +427,18 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
         size();
         wake();
       },
+      replay: () => {
+        arrive();
+        wake();
+      },
     };
 
     /* ---------------- theme ---------------- */
+    // The site's shadow tokens, resolved: warm brown in light, black in dark.
+    let shadowColor: [number, number, number] = [0.08, 0.07, 0.06];
     const theme = () => {
       const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      // The site's shadow tokens, resolved: warm brown in light, black in dark.
-      gl.uniform3f(U.shadowColor, dark ? 0 : 0.08, dark ? 0 : 0.07, dark ? 0 : 0.06);
+      shadowColor = dark ? [0, 0, 0] : [0.08, 0.07, 0.06];
       return dark ? 1.55 : 1;
     };
     let shadowGain = theme();
@@ -340,23 +458,31 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
       const dt = last ? Math.min((now - last) / 1000, 0.064) : 1 / 60;
       last = now;
 
-      const flipCfg = reduced ? M.reduced : M.top;
-      const bottomCfg = reduced ? M.reduced : M.bottom;
+      /* Springs are built from the live tuning each frame, so the panel's
+       * sliders take effect on the next turn without a rebuild. */
+      const flipCfg = reduced ? M.reduced : springConfig(T.topStiffness, T.topRatio);
+      const bottomCfg = reduced ? M.reduced : springConfig(T.bottomStiffness, T.bottomRatio);
+      const flexCfg = springConfig(T.flexStiffness, T.flexRatio);
       stepSpring(S.top, target.flip, dt, flipCfg, REST.unit);
       stepSpring(S.bottom, target.flip, dt, bottomCfg, REST.unit);
-      stepSpring(S.flexX, 0, dt, M.flex, REST.unit);
-      stepSpring(S.flexY, 0, dt, M.flex, REST.unit);
+      stepSpring(S.flexX, 0, dt, flexCfg, REST.unit);
+      stepSpring(S.flexY, 0, dt, flexCfg, REST.unit);
       stepSpring(S.tiltX, target.tiltX, dt, M.tilt, REST.unit);
       stepSpring(S.tiltY, target.tiltY, dt, M.tilt, REST.unit);
-      stepSpring(S.y, 0, dt, M.entry.y, REST.unit);
-      stepSpring(S.scale, 1, dt, M.entry.scale, REST.unit);
-      stepSpring(S.roll, restRoll, dt, M.entry.roll, REST.unit);
+      // The arrival waits out its delay with the print held invisible.
+      const arriving = now >= startAt;
+      if (arriving) {
+        stepSpring(S.scale, 1, dt, springConfig(T.entryScaleStiffness, T.entryScaleRatio), REST.unit);
+        stepSpring(S.fade, 1, dt, springConfig(T.entryFadeStiffness, 1), REST.unit);
+        stepSpring(S.curlIn, 1, dt, springConfig(T.entryCurlStiffness, T.entryCurlRatio), REST.unit);
+      }
+      stepSpring(S.roll, restRoll, dt, M.tilt, REST.unit);
 
-      // The landing: once the drop is nearly over, flex the sheet and start
-      // the clock on the chemistry.
-      if (landedAt === null && S.y.value < 0.06) {
+      // The landing: once the print is nearly at size, flex the sheet and
+      // start the clock on the chemistry.
+      if (landedAt === null && arriving && Math.abs(S.scale.value - 1) < 0.04) {
         landedAt = now;
-        kickSpring(S.flexY, M.flexKick.land);
+        kickSpring(S.flexY, T.flexKickLand);
       }
       if (landedAt !== null && photoReady) {
         develop = clamp(
@@ -367,9 +493,29 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
       }
 
       const mean = (S.top.value + S.bottom.value) / 2;
-      const lift = Math.abs(Math.sin(mean)) * M.lift;
+      const lift = Math.abs(Math.sin(mean)) * T.lift;
       const bendX = S.flexX.value * 0.1;
       const bendY = S.flexY.value * 0.1;
+      /**
+       * The curl through the turn. `cos` of the turn is 1 with the picture
+       * up, 0 side-on and -1 with the back up: the resting curl follows it
+       * down to nothing on the back, and the through-turn curl rides sin²,
+       * peaking side-on and gone well before either face — squared so the
+       * print's ring as it settles on its back, a few degrees each way,
+       * does not keep bringing a bend back with every swing.
+       */
+      const swing = Math.sin(mean);
+      // The resting curl is gated on cos³, not cos: with cos alone it came
+      // back while the print was still nearly edge-on to the camera on the
+      // way round to the front, so the corner's lift pointed sideways and
+      // showed the black underside as a dark edge. Cubed, it only arrives
+      // once the print is nearly face-on, where a lift is toward the eye.
+      const facing = Math.max(0, Math.cos(mean));
+      const curl =
+        T.curl * S.curlIn.value * facing * facing * facing + T.curlThrough * swing * swing;
+      // Capped short of the corner rolling right over onto the sheet.
+      gl.uniform1f(U.curl, Math.min(2.9, reduced ? T.curl * facing : curl));
+      gl.uniform1f(U.curlLen, T.curlLength);
 
       gl.uniform1f(U.angleTop, S.top.value);
       gl.uniform1f(U.angleBottom, S.bottom.value);
@@ -378,54 +524,110 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
       gl.uniform2f(U.tilt, S.tiltX.value, S.tiltY.value);
       gl.uniform1f(U.roll, S.roll.value);
       gl.uniform1f(U.scale, S.scale.value);
-      gl.uniform3f(U.pos, 0, S.y.value, lift);
+      gl.uniform3f(U.pos, 0, 0, lift);
       gl.uniform1f(U.develop, develop);
+      gl.uniform1f(U.opacity, S.fade.value);
 
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
 
-      // Shadow first, without depth: two layers, each cast from the sheet
-      // by its own height, fading as the print comes away from the table.
-      const height = lift + Math.max(0, S.y.value) * 0.3 + (S.scale.value - 1);
+      /**
+       * The shadow, blurred. For each layer: the sheet's silhouette, thrown
+       * onto the table by height, into an offscreen target; a Gaussian
+       * across it, sideways then down; then the result laid on the table.
+       * Layers go furthest first, so the tight contact shadow paints last.
+       */
+      const height = lift + Math.max(0, S.scale.value - 1);
       gl.disable(gl.DEPTH_TEST);
       gl.disable(gl.CULL_FACE);
-      gl.uniform1f(U.wall, 0);
-      useSheet(0);
-      gl.uniform1f(U.shadow, 1);
-      for (const layer of [SHADOW.ambient, SHADOW.contact]) {
-        gl.uniform3f(U.shadowOffset, layer.offset[0], layer.offset[1], 0);
-        gl.uniform2f(U.shadowSlope, layer.slope[0], layer.slope[1]);
-        gl.uniform1f(U.shadowSoft, layer.soft);
-        gl.uniform1f(U.shadowSpread, layer.spread);
-        gl.uniform1f(
-          U.shadowAlpha,
-          clamp(layer.alpha * (1 - height * 0.8), layer.alpha * 0.2, layer.alpha) * shadowGain,
-        );
-        gl.drawElements(gl.TRIANGLES, mesh.index.length, gl.UNSIGNED_SHORT, 0);
+      {
+        const { canvasW, canvasH, width } = dims.current;
+        const fullW = Math.round(canvasW * dpr), fullH = Math.round(canvasH * dpr);
+        // The softness slider changes the sizes the layers want.
+        sizeTargets(fullW, fullH, width * dpr, T.shadowSoft);
+      }
+      if (pairs.length === SHADOW.layers.length) {
+        const [dx, dy] = SHADOW.dir;
+        const { canvasW, canvasH } = dims.current;
+        const fullW = Math.round(canvasW * dpr), fullH = Math.round(canvasH * dpr);
+        for (let k = SHADOW.layers.length - 1; k >= 0; k--) {
+          const layer = SHADOW.layers[k];
+          const pr = pairs[k];
+          // 1. Silhouette, at the layer's own size.
+          gl.bindFramebuffer(gl.FRAMEBUFFER, pr.a.fbo);
+          gl.viewport(0, 0, pr.w, pr.h);
+          gl.clearColor(0, 0, 0, 0);
+          gl.clear(gl.COLOR_BUFFER_BIT);
+          gl.disable(gl.BLEND);
+          gl.useProgram(program);
+          gl.uniform1f(U.wall, 0);
+          gl.uniform1f(U.shadow, 1);
+          gl.uniform3f(U.shadowOffset, 0, 0, 0);
+          const reach = layer.reach * T.shadowThrow;
+          gl.uniform2f(U.shadowSlope, dx * reach, dy * reach);
+          useSheet(0);
+          gl.drawElements(gl.TRIANGLES, mesh.index.length, gl.UNSIGNED_SHORT, 0);
+          gl.uniform1f(U.shadow, 0);
+          // 2. Blur: two passes each way, at a stride of one texel or a
+          //    little under, so the kernel is always well sampled.
+          const stride = clamp(pr.sigma / SIGMA_TEXELS, 0.25, 1);
+          gl.useProgram(blurProgram);
+          gl.bindBuffer(gl.ARRAY_BUFFER, quadVbo);
+          gl.enableVertexAttribArray(aPosBlur);
+          gl.vertexAttribPointer(aPosBlur, 2, gl.FLOAT, false, 0, 0);
+          gl.activeTexture(gl.TEXTURE2);
+          gl.uniform1i(uBlurTex, 2);
+          for (let pass = 0; pass < 2; pass++) {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, pr.b.fbo);
+            gl.bindTexture(gl.TEXTURE_2D, pr.a.tex);
+            gl.uniform2f(uBlurStep, stride / pr.w, 0);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, pr.a.fbo);
+            gl.bindTexture(gl.TEXTURE_2D, pr.b.tex);
+            gl.uniform2f(uBlurStep, 0, stride / pr.h);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+          }
+          // 3. Onto the table, shifted by the layer's rest throw, fading as
+          //    the print comes away from the table.
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+          gl.viewport(0, 0, fullW, fullH);
+          gl.enable(gl.BLEND);
+          gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+          gl.useProgram(compProgram);
+          gl.enableVertexAttribArray(aPosComp);
+          gl.vertexAttribPointer(aPosComp, 2, gl.FLOAT, false, 0, 0);
+          gl.uniform1i(uCompTex, 2);
+          gl.bindTexture(gl.TEXTURE_2D, pr.a.tex);
+          gl.uniform3f(uCompColor, shadowColor[0], shadowColor[1], shadowColor[2]);
+          const a = layer.alpha * T.shadowAlpha;
+          gl.uniform1f(
+            uCompAlpha,
+            clamp(a * (1 - height * 0.8), a * 0.2, a) * shadowGain * S.fade.value,
+          );
+          // Clip units to uv: half the projected offset.
+          gl.uniform2f(uCompShift, dx * layer.offset * proj[0] * 0.5, dy * layer.offset * proj[1] * 0.5);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+        }
+        gl.disableVertexAttribArray(aPosBlur);
+        gl.disableVertexAttribArray(aPosComp);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.useProgram(program);
       }
 
       gl.enable(gl.DEPTH_TEST);
       gl.uniform1f(U.shadow, 0);
-      // The two faces, each drawn one-sided, half the thickness apart; then
-      // the edge between them.
+      // The two faces, each drawn one-sided, on the same sheet. There is no
+      // edge strip between them: the print is a sheet with two sides, and a
+      // drawn thickness kept showing as a line along whichever edge lifted.
       gl.enable(gl.CULL_FACE);
       gl.cullFace(gl.BACK);
-      useSheet(0.5);
+      useSheet(0);
       gl.drawElements(gl.TRIANGLES, mesh.index.length, gl.UNSIGNED_SHORT, 0);
       gl.cullFace(gl.FRONT);
-      useSheet(-0.5);
       gl.drawElements(gl.TRIANGLES, mesh.index.length, gl.UNSIGNED_SHORT, 0);
-      // Only the outward side of the strip, and nudged back in depth so the
-      // faces always win where the two meet.
-      gl.cullFace(gl.BACK);
-      gl.enable(gl.POLYGON_OFFSET_FILL);
-      gl.polygonOffset(1, 2);
-      gl.uniform1f(U.wall, 1);
-      useWalls();
-      gl.drawElements(gl.TRIANGLES, walls.index.length, gl.UNSIGNED_SHORT, 0);
-      gl.disable(gl.POLYGON_OFFSET_FILL);
       gl.disable(gl.CULL_FACE);
 
       const moving =
@@ -435,8 +637,10 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
         !isAtRest(S.flexY, 0) ||
         !isAtRest(S.tiltX, target.tiltX) ||
         !isAtRest(S.tiltY, target.tiltY) ||
-        !isAtRest(S.y, 0) ||
+        !arriving ||
         !isAtRest(S.scale, 1) ||
+        !isAtRest(S.fade, 1) ||
+        !isAtRest(S.curlIn, 1) ||
         !isAtRest(S.roll, restRoll) ||
         (landedAt !== null && develop < 1) ||
         !backDrawn;
@@ -475,14 +679,16 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
       gl.deleteTexture(backTex);
       gl.deleteBuffer(vbo);
       gl.deleteBuffer(ibo);
-      gl.deleteBuffer(wvbo);
-      gl.deleteBuffer(wibo);
+      gl.deleteBuffer(quadVbo);
+      freeTargets();
       gl.deleteProgram(program);
+      gl.deleteProgram(blurProgram);
+      gl.deleteProgram(compProgram);
     };
     // Size is read live from `dims`; only the content and motion preference
     // rebuild the scene.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src, back, reduced, lean]);
+  }, [src, back, writing, reduced, lean]);
 
   /* ---------------- pointer ---------------- */
   const onMove = useCallback(
@@ -491,8 +697,10 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
       const r = e.currentTarget.getBoundingClientRect();
       const x = ((e.clientX - r.left) / r.width - 0.5) * 2;
       const y = ((e.clientY - r.top) / r.height - 0.5) * 2;
-      // Tilt away from the pointer, the way a print pressed at one corner does.
-      controls.current?.tilt(y * M.tiltMax, -x * M.tiltMax);
+      // The side under the pointer comes up toward it (or down, away from
+      // it, with `tiltToward` reversed).
+      const k = T.tiltMax * T.tiltToward;
+      controls.current?.tilt(-y * k, x * k);
     },
     [reduced],
   );
@@ -575,9 +783,12 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
             </span>
           </span>
           <span className="polaroid-face polaroid-back">
-            {back.map((line, i) => (
-              <span key={i}>{line}</span>
-            ))}
+            {writing ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img className="polaroid-writing" src={asset(writing)} alt="" draggable={false} />
+            ) : (
+              back.map((line, i) => <span key={i}>{line}</span>)
+            )}
           </span>
         </span>
         {/* What a screen reader gets, whichever way the canvas is drawn. */}
@@ -592,7 +803,7 @@ export default function Polaroid({ src, alt, back, width, lean = 0 }: Props) {
 /* ------------------------------------------------------------------ *
  * GL plumbing
  * ------------------------------------------------------------------ */
-function compile(gl: WebGLRenderingContext): WebGLProgram | null {
+function compile(gl: WebGLRenderingContext, vert: string, frag: string): WebGLProgram | null {
   const shader = (type: number, source: string) => {
     const s = gl.createShader(type);
     if (!s) return null;
@@ -607,8 +818,8 @@ function compile(gl: WebGLRenderingContext): WebGLProgram | null {
     }
     return s;
   };
-  const vs = shader(gl.VERTEX_SHADER, VERT);
-  const fs = shader(gl.FRAGMENT_SHADER, FRAG);
+  const vs = shader(gl.VERTEX_SHADER, vert);
+  const fs = shader(gl.FRAGMENT_SHADER, frag);
   if (!vs || !fs) return null;
   const program = gl.createProgram();
   if (!program) return null;
@@ -704,7 +915,10 @@ function solid(
  * set in the site's mono. Drawn on a 2D canvas so it can use the real
  * webfont, then handed to the shader as a texture.
  * ------------------------------------------------------------------ */
-async function drawBack(lines: readonly string[]): Promise<HTMLCanvasElement | null> {
+async function drawBack(
+  lines: readonly string[],
+  writing?: string,
+): Promise<HTMLCanvasElement | null> {
   const W = 1024;
   const H = Math.round(W * PRINT.h);
   const c = document.createElement("canvas");
@@ -764,12 +978,38 @@ async function drawBack(lines: readonly string[]): Promise<HTMLCanvasElement | n
     ctx.fillRect(x, px(2.2), 1, px(2.4));
   }
 
-  // The caption.
+  const left = px(9);
+  const hand = writing ? await loadImage(writing) : null;
+  if (hand) {
+    /**
+     * White marker on black paper. The strokes sit in the sheet's open
+     * middle, above the pod, and fitted to it. Marker on paper is not quite
+     * opaque, and it bleeds a hair: the ink is laid down a touch below full
+     * white, and a faint, wider copy underneath softens the edge.
+     */
+    const boxX = px(6);
+    const boxY = px(7);
+    const boxW = W - px(12);
+    const boxH = podTop - px(4) - boxY;
+    const s = Math.min(boxW / hand.naturalWidth, boxH / hand.naturalHeight);
+    const dw = hand.naturalWidth * s;
+    const dh = hand.naturalHeight * s;
+    const dx = boxX + (boxW - dw) / 2;
+    const dy = boxY + (boxH - dh) / 2;
+    ctx.globalAlpha = 0.22;
+    ctx.filter = `blur(${Math.max(1, W / 700)}px)`;
+    ctx.drawImage(hand, dx, dy, dw, dh);
+    ctx.filter = "none";
+    ctx.globalAlpha = 0.92;
+    ctx.drawImage(hand, dx, dy, dw, dh);
+    ctx.globalAlpha = 1;
+  }
+
+  // The caption, typed, when there is no handwriting to show.
   ctx.fillStyle = "rgba(226, 220, 208, 0.82)";
   ctx.textBaseline = "alphabetic";
-  const left = px(9);
   let y = px(14);
-  lines.forEach((line, i) => {
+  (hand ? [] : lines).forEach((line, i) => {
     ctx.font = i === 0 ? labelFont : valueFont;
     // Tracked like the site's labels: letter by letter.
     const track = px(i === 0 ? 0.32 : 0.12);
@@ -787,4 +1027,15 @@ async function drawBack(lines: readonly string[]): Promise<HTMLCanvasElement | n
   ctx.fillText("INTEGRAL FILM \u00b7 79 \u00d7 79 MM", left, H - px(4.2));
 
   return c;
+}
+
+/** Resolves to null rather than throwing, so a missing file means "typed". */
+function loadImage(src: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.decoding = "async";
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
 }

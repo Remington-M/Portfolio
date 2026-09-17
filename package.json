@@ -13,7 +13,9 @@
     "og": "node scripts/og.mjs",
     "verify": "node scripts/verify-continuity.mjs",
     "verify:gesture": "node scripts/verify-gesture.mjs",
-    "verify:deck": "node scripts/verify-deck.mjs"
+    "verify:deck": "node scripts/verify-deck.mjs",
+    "copy": "node scripts/copy-editor.mjs",
+    "about:back": "node scripts/about-back.mjs"
   },
   "dependencies": {
     "motion": "^13.1.1",

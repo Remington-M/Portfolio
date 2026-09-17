@@ -30,7 +30,6 @@ export const CLIPS_WITH_POSTER = new Set<string>([
   "/media/gesture-navigation/swipe-to-go-home.mp4",
   "/media/google-pixel/app-opening.mp4",
   "/media/google-pixel/assistant-invocation.mp4",
-  "/media/google-pixel/boot-animation.mp4",
   "/media/google-pixel/google-to-g.mp4",
   "/media/google-pixel/pixel-2-welcome.mp4",
   "/media/google-pixel/pixel-3-welcome.mp4",
@@ -46,6 +45,4 @@ export const CLIPS_WITH_POSTER = new Set<string>([
   "/media/mys/ml-sorting-array.mp4",
   "/media/mys/panel-navigation.mp4",
   "/media/mys/photo-tour-desktop.mp4",
-  "/media/mys/photo-tour-room-expand.mp4",
-  "/media/mys/supertext.mp4",
 ]);

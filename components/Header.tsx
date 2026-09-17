@@ -7,9 +7,13 @@ import { CASE, TYPE, type as typeStyle } from "@/lib/design";
 export default function Header({
   variant,
   kicker,
+  onBack,
 }: {
   variant: "home" | "case" | "about";
   kicker?: string;
+  /** Case pages: take over the back link so the page can leave gracefully.
+   *  The href stays for anyone without a pointer or script. */
+  onBack?: () => void;
 }) {
   const { mobile, stage } = useStage();
   const ts = stage.ts;
@@ -19,8 +23,9 @@ export default function Header({
   // of that type column, not a separate thing pinned to the corner. Its inset
   // is a horizontal measurement and takes the horizontal scale.
   const sideX = (variant === "case" ? CASE.intro.rail : 64) * stage.sx;
+  // On a phone the bar sits below the status bar, not under it.
   const pad = mobile
-    ? `${stage.top + 22 * stage.s}px ${24 * stage.sx}px`
+    ? `${stage.top + stage.safeTop + 22 * stage.s}px ${24 * stage.sx}px`
     : `${stage.top + 28 * stage.s}px ${sideX}px`;
 
   /**
@@ -50,7 +55,15 @@ export default function Header({
       <header style={frame}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 22 * ts }}>
           {/* U+2190, then an ordinary space — not a glyph with padding. */}
-          <Link href="/" style={{ ...typeStyle(TYPE.label, ts), color: "var(--ink-3)" }}>
+          <Link
+            href="/"
+            onClick={(e) => {
+              if (!onBack || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+              e.preventDefault();
+              onBack();
+            }}
+            style={{ ...typeStyle(TYPE.label, ts), color: "var(--ink-3)" }}
+          >
             ← WORK
           </Link>
           {kicker ? (

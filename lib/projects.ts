@@ -1,4 +1,5 @@
 import type { ShotKind } from "./design";
+import { copy, shotKey } from "./copy";
 
 export type Shot = {
   n: string;
@@ -39,6 +40,11 @@ export type Shot = {
   src?: string;
   srcWebm?: string;
   poster?: string;
+};
+
+/** The project as authored here: everything but its writing. */
+type ProjectStructure = Omit<Project, "overview" | "collaborators" | "shots"> & {
+  shots: Omit<Shot, "title">[];
 };
 
 export type Project = {
@@ -93,13 +99,15 @@ export type Project = {
 };
 
 /**
- * Copy that has not been written yet.
+ * What a project falls back to when `content/copy.json` has nothing for it.
  *
- * Exported so `generateMetadata` can recognise it: a placeholder on the page
- * is obvious to anyone looking at it, but the same string in a `<meta
+ * Now that the copy lives in that file, these are reached only by a project
+ * added before its copy is written — but they still have to be nameable.
+ * `generateMetadata` recognises the overview one: a placeholder on the page is
+ * obvious to anyone looking at it, while the same string in a `<meta
  * name="description">` is invisible until it turns up in a search result or a
- * shared link. The page keeps showing it — it should be conspicuous — while
- * the metadata falls back to something true.
+ * shared link. The page keeps showing it — it should be conspicuous — and the
+ * metadata falls back to something true.
  */
 export const PLACEHOLDER_OVERVIEW = "Overview copy goes here.";
 const PLACEHOLDER_COLLAB = "Name Surname, Name Surname";
@@ -115,13 +123,11 @@ const PLACEHOLDER_COLLAB = "Name Surname, Name Surname";
  * the same recording either way; pointing at the one file says so, and saves
  * shipping it twice.
  */
-export const projects: Project[] = [
+const structure: ProjectStructure[] = [
   {
     slug: "airbnb-reservations",
     title: "Airbnb Reservations",
     year: "2025",
-    overview: PLACEHOLDER_OVERVIEW,
-    collaborators: PLACEHOLDER_COLLAB,
     src: "/media/airbnb-reservations/reservation-detail.mp4",
     poster: "/media/airbnb-reservations/poster.jpg",
     /**
@@ -132,35 +138,30 @@ export const projects: Project[] = [
     shots: [
       {
         n: "02",
-        title: "Reservation Detail",
         kind: "portrait",
         src: "/media/airbnb-reservations/reservation-detail.mp4",
         aspect: 0.4609,
       },
       {
         n: "03",
-        title: "Guest Avatars",
         kind: "landscape",
         src: "/media/airbnb-reservations/guest-avatars.mp4",
         aspect: 1.88,
       },
       {
         n: "04",
-        title: "Avatar Pile Studies",
         kind: "square",
         src: "/media/airbnb-reservations/avatar-pile-studies.mp4",
         aspect: 0.752,
       },
       {
         n: "05",
-        title: "Multi-Supply Avatars",
         kind: "landscape",
         src: "/media/airbnb-reservations/multi-supply-avatars.mp4",
         aspect: 1.88,
       },
       {
         n: "06",
-        title: "Reservation Detail Desktop",
         kind: "desktop",
         src: "/media/airbnb-reservations/reservation-detail-desktop.mp4",
         aspect: 1.4063,
@@ -171,8 +172,6 @@ export const projects: Project[] = [
     slug: "airbnb-setup",
     title: "Airbnb Setup",
     year: "2025",
-    overview: PLACEHOLDER_OVERVIEW,
-    collaborators: PLACEHOLDER_COLLAB,
     src: "/media/airbnb-setup/experience-selection.mp4",
     poster: "/media/airbnb-setup/poster.jpg",
     /**
@@ -188,42 +187,36 @@ export const projects: Project[] = [
     shots: [
       {
         n: "02",
-        title: "Service Type Selection",
         kind: "portrait",
         src: "/media/airbnb-setup/service-type-selection.mp4",
         aspect: 0.4609,
       },
       {
         n: "03",
-        title: "Service Type",
         kind: "desktop",
         src: "/media/airbnb-setup/service-type.mp4",
         aspect: 1.4063,
       },
       {
         n: "04",
-        title: "About You Editor",
         kind: "portrait",
         src: "/media/airbnb-setup/about-you-editor.mp4",
         aspect: 0.4609,
       },
       {
         n: "05",
-        title: "Setup Intro",
         kind: "desktop",
         src: "/media/airbnb-setup/setup-intro.mp4",
         aspect: 1.4063,
       },
       {
         n: "06",
-        title: "Menu Intro",
         kind: "landscape",
         src: "/media/airbnb-setup/menu-intro.mp4",
         aspect: 1.7778,
       },
       {
         n: "07",
-        title: "Menu Group Advance",
         kind: "landscape",
         src: "/media/airbnb-setup/menu-group-advance.mp4",
         aspect: 1.7778,
@@ -231,7 +224,6 @@ export const projects: Project[] = [
       },
       {
         n: "08",
-        title: "Menu Image Fill",
         kind: "landscape",
         src: "/media/airbnb-setup/menu-image-fill.mp4",
         aspect: 1.7778,
@@ -239,14 +231,12 @@ export const projects: Project[] = [
       },
       {
         n: "09",
-        title: "Nav Bar Thumbnail",
         kind: "square",
         src: "/media/airbnb-setup/nav-bar-thumbnail.mp4",
         aspect: 1,
       },
       {
         n: "10",
-        title: "Nav Bar Category",
         kind: "square",
         src: "/media/airbnb-setup/nav-bar-category.mp4",
         aspect: 1,
@@ -254,28 +244,24 @@ export const projects: Project[] = [
       },
       {
         n: "11",
-        title: "Add Photos",
         kind: "portrait",
         src: "/media/airbnb-setup/add-photos.mp4",
         aspect: 0.4609,
       },
       {
         n: "12",
-        title: "Add Offerings",
         kind: "desktop",
         src: "/media/airbnb-setup/add-offerings.mp4",
         aspect: 1.4063,
       },
       {
         n: "13",
-        title: "Itinerary Intro",
         kind: "landscape",
         src: "/media/airbnb-setup/itinerary-intro.mp4",
         aspect: 1.7778,
       },
       {
         n: "14",
-        title: "Celebration",
         kind: "landscape",
         src: "/media/airbnb-setup/celebration.mp4",
         aspect: 1.7778,
@@ -286,8 +272,6 @@ export const projects: Project[] = [
     slug: "airbnb-listing-editor",
     title: "Airbnb Listing Editor",
     year: "2024",
-    overview: PLACEHOLDER_OVERVIEW,
-    collaborators: PLACEHOLDER_COLLAB,
     /**
      * The deck card shows the first shot's clip.
      *
@@ -304,87 +288,63 @@ export const projects: Project[] = [
     shots: [
       {
         n: "02",
-        title: "LTR Overshoot Presentation",
         kind: "square",
         src: "/media/mys/ltr-overshoot-presentation.mp4",
         aspect: 1,
       },
       {
         n: "03",
-        title: "Little People Detail Loop",
         kind: "square",
         src: "/media/mys/little-people-detail-loop.mp4",
         aspect: 1,
       },
       {
         n: "04",
-        title: "ML Sorting Array",
         kind: "landscape",
         src: "/media/mys/ml-sorting-array.mp4",
         aspect: 1.7778,
       },
       {
         n: "05",
-        title: "ML Photo Arranging Presentation",
         kind: "square",
         src: "/media/mys/ml-photo-arranging-presentation.mp4",
         aspect: 0.9643,
       },
       {
         n: "06",
-        title: "Photo Tour Desktop",
         kind: "desktop",
         src: "/media/mys/photo-tour-desktop.mp4",
         aspect: 1.4015,
       },
       {
         n: "07",
-        title: "Photo Tour Room Expand",
-        kind: "square",
-        src: "/media/mys/photo-tour-room-expand.mp4",
-        aspect: 1,
-      },
-      {
-        n: "08",
-        title: "Panel Navigation",
         kind: "desktop",
         src: "/media/mys/panel-navigation.mp4",
         aspect: 1.4008,
       },
       {
-        n: "09",
-        title: "Gallery Photo View Grow",
+        n: "08",
         kind: "desktop",
         src: "/media/mys/gallery-photo-view-grow.mp4",
         aspect: 1.4008,
       },
       {
-        n: "10",
-        title: "Auto Arrange",
+        n: "09",
         kind: "portrait",
         src: "/media/mys/auto-arrange.mp4",
         aspect: 0.4621,
       },
       {
-        n: "11",
-        title: "Auto Arrange Desktop",
+        n: "10",
         kind: "desktop",
         src: "/media/mys/auto-arrange-desktop.mp4",
         aspect: 1.4015,
       },
       {
-        n: "12",
-        title: "Amenities Empty State",
+        n: "11",
         kind: "portrait",
         src: "/media/mys/amenities-empty-state.mp4",
         aspect: 0.4621,
-      },
-      {
-        n: "13",
-        title: "Super Text",
-        kind: "desktop",
-        src: "/media/mys/supertext.mp4",
-        aspect: 1.4008,
       },
     ],
   },
@@ -392,39 +352,45 @@ export const projects: Project[] = [
     slug: "gesture-navigation",
     title: "Gesture Navigation",
     year: "2020",
-    overview: PLACEHOLDER_OVERVIEW,
-    collaborators: PLACEHOLDER_COLLAB,
     src: "/media/gesture-navigation/swipe-to-go-home.mp4",
     poster: "/media/gesture-navigation/poster.jpg",
-    /** The three system gestures, then invoking the Assistant with a fourth. */
+    /**
+     * The map of the gestures first, as a still, then the three system
+     * gestures, then invoking the Assistant with a fourth.
+     */
     shots: [
       {
         n: "02",
-        title: "Gesture Navigation",
-        kind: "portrait",
-        src: "/media/gesture-navigation/swipe-to-go-home.mp4",
-        aspect: 0.474,
+        // A diagram, not a screen: the softer window radius, not the phone's.
+        kind: "square",
+        poster: "/media/gesture-navigation/gesture-map.webp",
+        aspect: 1500 / 1804,
       },
       {
         n: "03",
-        title: "Overview",
-        kind: "portrait",
+        kind: "pixel",
+        src: "/media/gesture-navigation/swipe-to-go-home.mp4",
+        // Cropped inside the screen, past its black system bars.
+        aspect: 0.4965,
+      },
+      {
+        n: "04",
+        kind: "pixel",
         src: "/media/gesture-navigation/overview.mp4",
         aspect: 0.474,
       },
       {
-        n: "04",
-        title: "Back",
-        kind: "portrait",
+        n: "05",
+        kind: "pixel",
         src: "/media/gesture-navigation/back.mp4",
         aspect: 0.474,
       },
       {
-        n: "05",
-        title: "Assistant Gesture",
-        kind: "portrait",
+        n: "06",
+        kind: "pixel",
         src: "/media/gesture-navigation/assistant-gesture.mp4",
-        aspect: 0.474,
+        // Full frame with its even 14px border kept; see the encode script.
+        aspect: 0.4792,
       },
     ],
   },
@@ -436,20 +402,15 @@ export const projects: Project[] = [
      * break — the headline and the ledger row set the same one line.
      */
     title: "Google Pixel",
-    /**
-     * One date string, used by the ledger, the kicker, the YEAR field and the
-     * page <title>. No `yearLong`: that exists for a project whose kicker wants
-     * a range where the ledger wants a year, and this is one year either way.
-     */
+    /** The ledger's one year; the project page shows the whole run. */
     year: "2018",
-    overview:
-      "I had the privilege to work on the Pixel 1–5. Getting to build the foundation for Google’s phone with a small design team was a highlight of my career.\n\nI was responsible for core system transitions, Google Assistant & Search integrations, branded moments, core infrastructure, physics based motion and much more!",
-    collaborators: "Name Surname, Name Surname, Name Surname",
+    yearLong: "2016-2020",
     src: "/media/google-pixel/pixel-3-welcome.mp4",
     poster: "/media/google-pixel/poster.jpg",
     /**
-     * The overview: system motion first, then the branded moments, then the
-     * two side-by-side comparisons that end on a square.
+     * The overview: the Google logo straight after the welcome, then the
+     * system motion, then the two side-by-side comparisons that end on a
+     * square.
      *
      * The Pixel 3 welcome is not among them. It is the hero above, and unlike
      * the rest of this footage that clip was re-exported as the screen alone
@@ -464,49 +425,36 @@ export const projects: Project[] = [
     shots: [
       {
         n: "02",
-        title: "Gesture Navigation",
-        kind: "portrait",
-        src: "/media/gesture-navigation/swipe-to-go-home.mp4",
-        aspect: 0.474,
-      },
-      {
-        n: "03",
-        title: "Assistant Invocation",
-        kind: "portrait",
-        src: "/media/google-pixel/assistant-invocation.mp4",
-        aspect: 0.474,
-      },
-      {
-        n: "04",
-        title: "Google Logo Animation",
         kind: "landscape",
         src: "/media/google-pixel/google-to-g.mp4",
         aspect: 1.7778,
       },
       {
+        n: "03",
+        kind: "portrait",
+        src: "/media/gesture-navigation/swipe-to-go-home.mp4",
+        aspect: 0.474,
+      },
+      {
+        n: "04",
+        kind: "portrait",
+        src: "/media/google-pixel/assistant-invocation.mp4",
+        aspect: 0.474,
+      },
+      {
         n: "05",
-        title: "Pixel 2 Welcome",
         kind: "portrait",
         src: "/media/google-pixel/pixel-2-welcome.mp4",
         aspect: 0.474,
       },
       {
         n: "06",
-        title: "Boot Animation",
-        kind: "portrait",
-        src: "/media/google-pixel/boot-animation.mp4",
-        aspect: 0.4776,
-      },
-      {
-        n: "07",
-        title: "App Opening",
         kind: "square",
         src: "/media/google-pixel/app-opening.mp4",
         aspect: 1,
       },
       {
-        n: "08",
-        title: "Task Switching",
+        n: "07",
         kind: "square",
         src: "/media/google-pixel/task-switching.mp4",
         aspect: 1,
@@ -514,6 +462,26 @@ export const projects: Project[] = [
     ],
   },
 ];
+
+/**
+ * The structure above with its writing merged in from `content/copy.json`.
+ *
+ * A project or shot the copy file does not know yet gets a visible stand-in
+ * rather than an empty string, so a missing entry shows up on the page instead
+ * of as a blank the eye slides past.
+ */
+export const projects: Project[] = structure.map((p) => {
+  const c = copy.projects[p.slug];
+  return {
+    ...p,
+    overview: c?.overview ?? PLACEHOLDER_OVERVIEW,
+    collaborators: c?.collaborators ?? PLACEHOLDER_COLLAB,
+    shots: p.shots.map((s) => {
+      const key = shotKey(s.src ?? s.poster) ?? s.n;
+      return { ...s, title: c?.shots[key] ?? `Untitled (${key})` };
+    }),
+  };
+});
 
 /**
  * The title as the HEADLINE sets it — one entry per line.

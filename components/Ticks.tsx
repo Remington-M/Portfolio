@@ -30,7 +30,12 @@ export default function Ticks({
         display: "flex",
         justifyContent: "center",
         alignItems: "center",
-        gap: 7,
+        /**
+         * No gap: the buttons touch, and the spacing is their side padding.
+         * A 10px tick with 7px either side was the whole target on a phone;
+         * the row looks the same, and each tick now takes a thumb.
+         */
+        gap: 0,
       }}
     >
       {Array.from({ length: count }, (_, i) => {
@@ -43,13 +48,14 @@ export default function Ticks({
             aria-label={labels(i)}
             aria-current={d === 0 ? "true" : undefined}
             initial={false}
-            animate={{ width: d === 0 ? 26 : 10 }}
+            animate={{ width: d === 0 ? 26 + 8 : 10 + 8 }}
             transition={SPRING.tick}
             style={{
-              height: 20,
+              height: 32,
               display: "flex",
               alignItems: "center",
-              padding: 0,
+              padding: "0 4px",
+              boxSizing: "border-box",
               border: 0,
               background: "none",
               color: "inherit",

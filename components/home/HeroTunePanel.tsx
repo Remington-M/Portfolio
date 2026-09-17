@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import {
+  heroRead,
   heroTune,
+  heroTuneChanges,
   heroTuneSource,
   replayHero,
   resetHeroTune,
@@ -21,9 +23,27 @@ import {
 export default function HeroTunePanel() {
   const [open, setOpen] = useState(false);
   const [, bump] = useState(0);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+  /** Shown when the clipboard is refused, so the text can still be taken. */
+  const [fallback, setFallback] = useState<string | null>(null);
+
+  const copy = async (label: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(label);
+      setTimeout(() => setCopied(null), 1200);
+    } catch {
+      setFallback(text);
+    }
+  };
 
   useEffect(() => subscribeHeroTune(() => bump((n) => n + 1)), []);
+  /* The readouts change every frame while the sequence runs; poll them. */
+  useEffect(() => {
+    if (!open) return;
+    const id = setInterval(() => bump((n) => n + 1), 80);
+    return () => clearInterval(id);
+  }, [open]);
   useEffect(() => {
     if (new URLSearchParams(window.location.search).has("tune")) setOpen(true);
     const onKey = (e: KeyboardEvent) => {
@@ -65,19 +85,57 @@ export default function HeroTunePanel() {
         <button style={{ ...ghost, flex: 1, background: "rgba(160,220,150,.18)" }} onClick={replayHero}>
           replay · R
         </button>
-        <button
-          style={{ ...ghost, flex: 1 }}
-          onClick={async () => {
-            await navigator.clipboard.writeText(heroTuneSource());
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1200);
-          }}
-        >
-          {copied ? "copied" : "copy design.ts"}
-        </button>
         <button style={ghost} onClick={resetHeroTune}>reset</button>
       </div>
+      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+        <button
+          style={{ ...ghost, flex: 1 }}
+          onClick={() => copy("changes", heroTuneChanges() || "(nothing changed)")}
+        >
+          {copied === "changes" ? "copied" : "copy changes"}
+        </button>
+        <button
+          style={{ ...ghost, flex: 1 }}
+          onClick={() => copy("source", heroTuneSource())}
+        >
+          {copied === "source" ? "copied" : "copy design.ts"}
+        </button>
+      </div>
+      {fallback !== null ? (
+        <div style={{ marginTop: 6 }}>
+          <div style={{ opacity: 0.5, marginBottom: 3 }}>clipboard refused — select and copy:</div>
+          <textarea
+            readOnly
+            value={fallback}
+            onFocus={(e) => e.currentTarget.select()}
+            style={{ width: "100%", height: 90, font: "inherit", fontSize: 9, background: "rgba(255,255,255,.06)", color: "inherit", border: 0, borderRadius: 5, padding: 6 }}
+          />
+          <button style={{ ...ghost, marginTop: 3 }} onClick={() => setFallback(null)}>close</button>
+        </div>
+      ) : null}
 
+      <Group label="SCROLL · AS THE DECK READS IT">
+        <div style={{ height: 6, borderRadius: 3, background: "rgba(255,255,255,.12)", marginBottom: 5, position: "relative" }}>
+          <div
+            style={{
+              position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 3,
+              width: `${Math.min(100, (100 * heroRead.scrollTop) / Math.max(1, heroRead.scrollMax))}%`,
+              background: heroRead.pinned ? "rgba(240,160,120,.9)" : "rgba(160,220,150,.9)",
+            }}
+          />
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, opacity: 0.75 }}>
+          <span>top {heroRead.scrollTop.toFixed(0)}</span>
+          <span>raw {heroRead.raw.toFixed(2)}</span>
+          <span>card {heroRead.committed}</span>
+          <span>deck {heroRead.deck.toFixed(2)}</span>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, opacity: 0.75 }}>
+          <span>events {heroRead.events}</span>
+          <span>turned {heroRead.turned}</span>
+          <span style={{ color: heroRead.pinned ? "rgb(240,160,120)" : undefined }}>{heroRead.pinned ? "pinned" : "free"}</span>
+        </div>
+      </Group>
       <Group label="BEATS">
         {S("lead", "lead", 0, 2, 0.05, "s")}
         {S("blink in", "blinkIn", 0, 3, 0.05, "s")}
@@ -92,6 +150,10 @@ export default function HeroTunePanel() {
         {S("below baseline", "cursorBelow", 0, 0.6, 0.01, "em")}
       </Group>
       <Group label="SMEAR · FROM SPEED">
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 5, opacity: 0.7 }}>
+          <span>last run · peak speed {heroRead.peakSpeed.toFixed(0)} em/s</span>
+          <span>peak tail {heroRead.peakTail.toFixed(2)} em</span>
+        </div>
         {S("threshold speed", "smearThreshold", 0, 120, 1, "em/s")}
         {S("tail per em/s over", "smearGain", 0, 0.15, 0.001, "em")}
         {S("speed smoothing", "smearRise", 0, 0.3, 0.005, "s")}
@@ -148,11 +210,37 @@ export default function HeroTunePanel() {
       </Group>
       <Group label="ALL IN · THEN THE DEAL">
         {S("hold before deal", "holdIn", 0, 4, 0.05, "s")}
+        {S("text rise delay — after cards", "riseDelay", 0, 2, 0.02, "s")}
         {S("rise stiffness", "riseStiffness", 10, 400, 1)}
         {S("rise damping ratio", "riseRatio", 0.1, 2, 0.01)}
         {S("rise mass", "riseMass", 0.2, 5, 0.05)}
         {S("cursor blink out", "blinkOut", 0, 4, 0.05, "s")}
         {S("cursor fade out", "fadeOut", 0, 2, 0.05, "s")}
+      </Group>
+      <Group label="DEAL · THE STACK">
+        {S("stiffness", "dealStiffness", 10, 400, 1)}
+        {S("damping ratio", "dealRatio", 0.1, 2, 0.01)}
+        {S("mass", "dealMass", 0.2, 5, 0.05)}
+        {S("stiffness falloff per card back", "dealFalloff", 0, 0.5, 0.01)}
+        {S("start below seat", "dealRiseHeights", 0, 2, 0.01, "cards")}
+      </Group>
+      <Group label="DEAL · THE FAN">
+        {S("starts after rise", "fanDelay", 0, 2, 0.02, "s")}
+        {S("stiffness", "fanStiffness", 10, 400, 1)}
+        {S("damping ratio", "fanRatio", 0.1, 2, 0.01)}
+        {S("mass", "fanMass", 0.2, 5, 0.05)}
+        {S("stiffness falloff per card back", "fanFalloff", 0, 0.5, 0.01)}
+        {S("ratio drop per card back", "fanRatioFalloff", 0, 0.3, 0.01)}
+      </Group>
+      <Group label="DECK · LIGHT">
+        {S("azimuth — 90 is down", "lightAzimuth", 0, 180, 1, "°")}
+        {S("distance", "lightDistance", 1, 40, 0.5)}
+        {S("elevation · front", "lightElevationFront", 0, 0.6, 0.005)}
+        {S("elevation · back", "lightElevationBack", 0, 0.6, 0.005)}
+        {S("brightness · front", "lightBrightnessFront", 0, 0.5, 0.005)}
+        {S("brightness · back", "lightBrightnessBack", 0, 0.5, 0.005)}
+        {S("softness — 1 is the plugin", "lightSoftness", 0.5, 6, 0.1, "×")}
+        {S("side face", "lightSide", 0, 3, 0.05, "×")}
       </Group>
     </div>
   );

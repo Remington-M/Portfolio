@@ -1,6 +1,6 @@
 "use client";
 
-import { HERO_TYPE } from "./design";
+import { HERO_INTRO, HERO_TYPE, LIGHT, type Light } from "./design";
 
 /**
  * Live tuning for the typed landing sequence.
@@ -44,6 +44,7 @@ export type HeroTune = {
   blinkOut: number;
   fadeOut: number;
   holdIn: number;
+  riseDelay: number;
   riseStiffness: number;
   riseRatio: number;
   riseMass: number;
@@ -65,6 +66,25 @@ export type HeroTune = {
   hoverMaxSpeed: number;
   hoverStiffness: number;
   hoverRatio: number;
+  dealStiffness: number;
+  dealRatio: number;
+  dealMass: number;
+  dealFalloff: number;
+  dealRiseHeights: number;
+  fanDelay: number;
+  fanStiffness: number;
+  fanRatio: number;
+  fanMass: number;
+  fanFalloff: number;
+  fanRatioFalloff: number;
+  lightAzimuth: number;
+  lightDistance: number;
+  lightElevationFront: number;
+  lightElevationBack: number;
+  lightBrightnessFront: number;
+  lightBrightnessBack: number;
+  lightSoftness: number;
+  lightSide: number;
 };
 
 const authored = (): HeroTune => ({
@@ -101,6 +121,7 @@ const authored = (): HeroTune => ({
   blinkOut: HERO_TYPE.blinkOut,
   fadeOut: HERO_TYPE.fadeOut,
   holdIn: HERO_TYPE.holdIn,
+  riseDelay: HERO_TYPE.rise.delay,
   riseStiffness: HERO_TYPE.rise.stiffness,
   riseRatio: HERO_TYPE.rise.ratio,
   riseMass: HERO_TYPE.rise.mass,
@@ -122,9 +143,69 @@ const authored = (): HeroTune => ({
   hoverMaxSpeed: HERO_TYPE.hover.maxSpeed,
   hoverStiffness: HERO_TYPE.hover.stiffness,
   hoverRatio: HERO_TYPE.hover.ratio,
+  dealStiffness: HERO_INTRO.deal.stiffness,
+  dealRatio: HERO_INTRO.deal.ratio,
+  dealMass: HERO_INTRO.deal.mass,
+  dealFalloff: HERO_INTRO.deal.falloff,
+  dealRiseHeights: HERO_INTRO.deal.riseHeights,
+  fanDelay: HERO_INTRO.deal.fan.delay,
+  fanStiffness: HERO_INTRO.deal.fan.stiffness,
+  fanRatio: HERO_INTRO.deal.fan.ratio,
+  fanMass: HERO_INTRO.deal.fan.mass,
+  fanFalloff: HERO_INTRO.deal.fan.falloff,
+  fanRatioFalloff: HERO_INTRO.deal.fan.ratioFalloff,
+  lightAzimuth: LIGHT.azimuth,
+  lightDistance: LIGHT.distance,
+  lightElevationFront: LIGHT.elevation.front,
+  lightElevationBack: LIGHT.elevation.back,
+  lightBrightnessFront: LIGHT.brightness.front,
+  lightBrightnessBack: LIGHT.brightness.back,
+  lightSoftness: LIGHT.softness,
+  lightSide: LIGHT.side,
 });
 
 export const heroTune: HeroTune = authored();
+
+/**
+ * Readouts from the running sequence, for the panel. Written by the
+ * sequence every frame, read by the panel on a timer; nothing else reads
+ * them. `peakTail` is the longest the cursor's smear got this run, in em,
+ * and `peakSpeed` the fastest the cursor went, in em/s — the two numbers
+ * that decide whether there is a smear to see at all.
+ */
+export const heroRead = {
+  peakTail: 0,
+  peakSpeed: 0,
+  /** The scroller, as the deck reads it: raw scrollTop, the card position
+   *  that maps to, the committed card, the deck's actual position, cards
+   *  turned in the current gesture, and whether the scroller is pinned. */
+  scrollTop: 0,
+  scrollMax: 1,
+  raw: 0,
+  committed: 0,
+  deck: 0,
+  turned: 0,
+  pinned: false,
+  events: 0,
+};
+
+/**
+ * Only what has moved, one line each, for pasting into a message: the
+ * full design.ts block is the right thing to commit and the wrong thing
+ * to read. Empty when nothing has.
+ */
+export function heroTuneChanges(): string {
+  const base = authored();
+  const lines: string[] = [];
+  for (const key of Object.keys(base) as (keyof HeroTune)[]) {
+    const a = base[key], b = heroTune[key];
+    const same = Array.isArray(a)
+      ? (a as number[]).every((v, i) => v === (b as number[])[i])
+      : a === b;
+    if (!same) lines.push(`${key}: ${JSON.stringify(a)} → ${JSON.stringify(b)}`);
+  }
+  return lines.join("\n");
+}
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -165,7 +246,25 @@ export function heroSpring(stiffness: number, ratio: number, mass: number) {
   };
 }
 
-/** The current values, shaped as the HERO_TYPE block in design.ts. */
+/**
+ * The deck's light, from the live values. Built on demand by the frame
+ * loop; the plain object is what `deckShadow` takes.
+ */
+export function heroLight(): Light {
+  const t = heroTune;
+  return {
+    azimuth: t.lightAzimuth,
+    distance: t.lightDistance,
+    elevation: { front: t.lightElevationFront, back: t.lightElevationBack },
+    brightness: { front: t.lightBrightnessFront, back: t.lightBrightnessBack },
+    layers: LIGHT.layers,
+    softness: t.lightSoftness,
+    side: t.lightSide,
+    size: LIGHT.size,
+  };
+}
+
+/** The current values, shaped as the HERO_TYPE and LIGHT blocks in design.ts. */
 export function heroTuneSource(): string {
   const t = heroTune;
   const f = (n: number) => (Math.round(n * 1000) / 1000).toString();
@@ -194,7 +293,7 @@ export function heroTuneSource(): string {
   blinkOut: ${f(t.blinkOut)},
   fadeOut: ${f(t.fadeOut)},
   holdIn: ${f(t.holdIn)},
-  rise: { stiffness: ${f(t.riseStiffness)}, ratio: ${f(t.riseRatio)}, mass: ${f(t.riseMass)} },
+  rise: { delay: ${f(t.riseDelay)}, stiffness: ${f(t.riseStiffness)}, ratio: ${f(t.riseRatio)}, mass: ${f(t.riseMass)} },
   ripple: {
     pixel: ${f(t.ripplePixel)},
     delay: ${f(t.rippleDelay)},
@@ -217,5 +316,34 @@ export function heroTuneSource(): string {
     stiffness: ${f(t.hoverStiffness)},
     ratio: ${f(t.hoverRatio)},
   },
-} as const;`;
+} as const;
+
+// HERO_INTRO.deal
+  deal: {
+    lead: ${HERO_INTRO.deal.lead},
+    stiffness: ${f(t.dealStiffness)},
+    ratio: ${f(t.dealRatio)},
+    mass: ${f(t.dealMass)},
+    falloff: ${f(t.dealFalloff)},
+    riseHeights: ${f(t.dealRiseHeights)},
+    fan: {
+      delay: ${f(t.fanDelay)},
+      stiffness: ${f(t.fanStiffness)},
+      ratio: ${f(t.fanRatio)},
+      mass: ${f(t.fanMass)},
+      falloff: ${f(t.fanFalloff)},
+      ratioFalloff: ${f(t.fanRatioFalloff)},
+    },
+  },
+
+export const LIGHT: Light = {
+  azimuth: ${f(t.lightAzimuth)},
+  distance: ${f(t.lightDistance)},
+  elevation: { front: ${f(t.lightElevationFront)}, back: ${f(t.lightElevationBack)} },
+  brightness: { front: ${f(t.lightBrightnessFront)}, back: ${f(t.lightBrightnessBack)} },
+  layers: ${LIGHT.layers},
+  softness: ${f(t.lightSoftness)},
+  side: ${f(t.lightSide)},
+  size: ${LIGHT.size},
+};`;
 }

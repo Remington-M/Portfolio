@@ -1,0 +1,86 @@
+{
+  "projects": {
+    "airbnb-reservations": {
+      "overview": "The hosting side of the Airbnb app was redesigned from the ground up. We wanted to help hosts connect with the guests that were booking their home or experience. This is one of my favorite transitions that shipped - a shared element transition with 20 custom  designed animations!",
+      "collaborators": "Mark Laughlin, Eli Block, Miguel Jimenez, Allen Chen, Jimmy Guo",
+      "shots": {
+        "reservation-detail": "Reservation Detail",
+        "guest-avatars": "Guest Avatars",
+        "avatar-pile-studies": "Avatar Studies",
+        "multi-supply-avatars": "Multi-Supply Avatars",
+        "reservation-detail-desktop": "Desktop"
+      }
+    },
+    "airbnb-setup": {
+      "overview": "When Airbnb launched Services and Experiences a new setup flow was required. This was a 60+ step process that needed to be as seamless as possible. I lead the motion design for this launch and successfully shipped over 40 unique transitions across native and web platforms.  ",
+      "collaborators": "Mark Laughlin, Arthur de Almeida, Eli Block, Saya Sugimura and many wonderful engineering partners!!",
+      "shots": {
+        "service-type-selection": "Service Selection",
+        "service-type": "Service Selection",
+        "about-you-editor": "Transition to Editor",
+        "setup-intro": "Transition to Editor",
+        "menu-intro": "Navigation - Intro",
+        "menu-group-advance": "Navigation - Group Progression",
+        "menu-image-fill": "Navigation - Image Fill",
+        "nav-bar-thumbnail": "Navigation - Image Fill",
+        "nav-bar-category": "Navigation - Group Progression",
+        "add-photos": "Add Photos",
+        "add-offerings": "Offerings Intro",
+        "itinerary-intro": "Itinerary Intro",
+        "celebration": "Celebration"
+      }
+    },
+    "airbnb-listing-editor": {
+      "overview": "We set out as a team to redesign our Hosts listing editor experience and bring it up to our world class standards. This project was a good mix of core UX transitions and delightful moments. I was particularly proud of the web work, given we had not previously shipped significant motion work on web. ",
+      "collaborators": "Mark Laughlin, Anna Saguinsin, McLane Teitel, Pete McClelland",
+      "shots": {
+        "ltr-overshoot-presentation": "Card Detail",
+        "little-people-detail-loop": "Little People",
+        "ml-sorting-array": "Photo Tour Demo",
+        "ml-photo-arranging-presentation": "Photo Tour Animation",
+        "photo-tour-desktop": "Rooms Animation",
+        "photo-tour-room-expand": "Photo Tour Room Expand",
+        "panel-navigation": "Panel Navigation",
+        "gallery-photo-view-grow": "Photo Gallery Transition",
+        "auto-arrange": "Auto Arrange",
+        "auto-arrange-desktop": "Auto Arrange",
+        "amenities-empty-state": "Amenities Empty State",
+        "supertext": "Super Text"
+      }
+    },
+    "gesture-navigation": {
+      "overview": "Since the beginning, Android has primarily been navigated by 3 buttons (Home, Back & Overview). For Android 10 the navigation bar went away and gestural navigation became the new default. I was part of a small UX team responsible for the redesign and was tasked with leading all motion efforts for this project. Physics were core to this project and I designed and implemented a spring based system that was the first of it's kind for the Android Operating System. ",
+      "collaborators": "E.K. Chung, Rod Graves, Arif Huda, Ryan Chu, Adrian Zumbrunnen",
+      "shots": {
+        "gesture-map": "Gestures",
+        "swipe-to-go-home": "Swipe to go Home",
+        "overview": "Overview",
+        "back": "Back",
+        "assistant-gesture": "The New Google Assistant"
+      }
+    },
+    "google-pixel": {
+      "overview": "I had the privilege to work on the Pixel 1–5. Getting to build the foundation for Google’s phone with a small design team was a highlight of my career.\n\nI was responsible for core system transitions, Google Assistant & Search integrations, branded moments, core infrastructure, physics based motion and much more!",
+      "collaborators": "E.K. Chung, Hannah Cho, Ayan Daniels, Ryan Chu ",
+      "shots": {
+        "swipe-to-go-home": "Gesture Navigation",
+        "assistant-invocation": "Assistant Invocation",
+        "google-to-g": "Google Logo Animation",
+        "pixel-2-welcome": "Pixel 2 Welcome",
+        "boot-animation": "Boot Animation",
+        "app-opening": "App Opening",
+        "task-switching": "Task Switching"
+      }
+    }
+  },
+  "about": {
+    "lead": "Hey I'm Remington and I am a Staff experience designer at Airbnb that specializes in motion design. I have over 15 years of design experience, split between building products and animating and directing videos. Prior to Airbnb I spent 6 years at Google designing some of the biggest features for Search and Android. I love motion design, it's the perfect balance of technical and creative. My past experience working with engineering teams has allowed me to thrive in this new AI era. I spend the majority of my time these days creating interactive experiences with Claude. ",
+    "body": [
+      ""
+    ],
+    "based": "Seattle, WA",
+    "back": [
+      ""
+    ]
+  }
+}

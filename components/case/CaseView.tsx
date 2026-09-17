@@ -2,14 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { motion, useMotionValueEvent, useTransform, useReducedMotion } from "motion/react";
+import { useRouter } from "next/navigation";
+import { motion, useMotionValueEvent, useTransform, useReducedMotion, type MotionValue } from "motion/react";
 import { useStage } from "@/components/media/stage";
 import Header from "@/components/Header";
 import Ticks from "@/components/Ticks";
 import {
   CASE,
   HOUSE,
-  HOUSE_CSS,
   SHADOW,
   SPRING,
   TYPE,
@@ -23,24 +23,39 @@ import {
   returnProgress,
   stageY,
 } from "@/lib/geometry";
+import { heroSpring } from "@/lib/heroTuning";
 import { clamp, clamp01 } from "@/lib/spring";
 import { titleLines, type Project } from "@/lib/projects";
 
 /**
- * Desktop project page.
+ * The project page, on every screen.
  *
- * One shot per 780px of scroll. The device frame is not rendered here — it is
+ * On a phone the intro column is a title and a year under the card, the
+ * card itself is the deck card where the deck left it, and the arrows sit
+ * in the gutters either side of the viewer. Everything else is the same
+ * page: one shot per 780px of scroll. The device frame is not rendered here — it is
  * the deck card, still in the persistent media layer, retargeted to this page's
  * geometry. What lives here is everything around it: the intro text, the shot
  * titles, the progress ticks and the return-to-deck ending.
  */
-export default function CaseDesktop({ project }: { project: Project }) {
-  const { cp, stage } = useStage();
+export default function CaseView({ project }: { project: Project }) {
+  const { cp, stage, viewer } = useStage();
   const reduced = useReducedMotion() ?? false;
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Shot 01 is the intro screen; the project's own shots follow.
   const shotCount = project.shots.length + 1;
+  const router = useRouter();
+  /** Set by the back link: fade the column, then leave. */
+  const [leaving, setLeaving] = useState(false);
+  /* The route changes on a clock matched to the fade, not on the fade's
+   * completion callback: a background tab suspends animation frames and a
+   * navigation that waited on one would never happen. */
+  useEffect(() => {
+    if (!leaving) return;
+    const t = setTimeout(() => router.push("/"), reduced ? 0 : CASE.leave.fade);
+    return () => clearTimeout(t);
+  }, [leaving, router, reduced]);
   const [active, setActive] = useState(() =>
     clamp(Math.round(cp.get()), 0, project.shots.length),
   );
@@ -56,15 +71,82 @@ export default function CaseDesktop({ project }: { project: Project }) {
     setActive((prev) => (prev === next ? prev : next));
   });
 
+  /**
+   * Re-read the scroller until it has arrived.
+   *
+   * Scroll position is the page's state, and it is read off scroll events.
+   * Safari does not always send the last one: a snap that finishes a smooth
+   * scroll or a flick can land without an event, and the page is left a
+   * fraction short of the shot it is visibly on — the intro's title ghosting
+   * at a few percent under the first shot's caption was exactly that. So
+   * after anything that sets the scroller moving, it is polled, and the
+   * final position is taken from the last read.
+   *
+   * It used to stop as soon as two reads agreed. Desktop Safari begins a
+   * smooth scroll a few frames late, so two reads agreed BEFORE the scroller
+   * had moved, the poll ended, and the overview stayed half-faded on the
+   * next shot. Now, given a target, it waits for the scroller to reach it,
+   * and only otherwise accepts a position that has moved and then held.
+   */
+  const settling = useRef<ReturnType<typeof setInterval> | null>(null);
+  const settle = useCallback(
+    (target?: number) => {
+      if (settling.current) clearInterval(settling.current);
+      const start = scrollRef.current?.scrollTop ?? -1;
+      let last = -1;
+      let held = 0;
+      let ticks = 0;
+      const done = () => {
+        onScroll();
+        if (settling.current) clearInterval(settling.current);
+        settling.current = null;
+      };
+      settling.current = setInterval(() => {
+        const el = scrollRef.current;
+        ticks += 1;
+        if (!el) return done();
+        const top = el.scrollTop;
+        const arrived = target !== undefined && Math.abs(top - target) < 1;
+        held = top === last && top !== start ? held + 1 : 0;
+        last = top;
+        // Arrived; or moved and then held still; or given up on.
+        if (arrived || held >= 3 || ticks > 60) done();
+      }, 80);
+    },
+    [onScroll],
+  );
+  useEffect(
+    () => () => {
+      if (settling.current) clearInterval(settling.current);
+    },
+    [],
+  );
+
+  /**
+   * Step `i` — a shot, or `shotCount` for the return ending, which is a
+   * step like any other: the next arrow, a swipe and a tap all reach it,
+   * rather than only a scroll flicked past the last shot.
+   */
   const jump = useCallback(
     (i: number) => {
+      const top =
+        i >= shotCount
+          ? CASE.offset + (shotCount - 1 + CASE.returnSpan) * CASE.step
+          : CASE.offset + i * CASE.step;
       scrollRef.current?.scrollTo({
-        top: CASE.offset + i * CASE.step,
+        top,
         behavior: reduced ? "auto" : "smooth",
       });
+      settle(top);
     },
-    [reduced],
+    [reduced, settle, shotCount],
   );
+  /** Which step the page is on, the ending counted as `shotCount`. */
+  const stepAt = useCallback(() => {
+    const v = cp.get();
+    const last = shotCount - 1;
+    return v >= last + CASE.returnSpan / 2 ? shotCount : clamp(Math.round(v), 0, last);
+  }, [cp, shotCount]);
 
   const s = stage.s;
   const ts = stage.ts;
@@ -75,6 +157,14 @@ export default function CaseDesktop({ project }: { project: Project }) {
 
   const introOpacity = useTransform(cp, (v) => clamp01(1 - Math.abs(v) * 1.9));
   const introY = useTransform(cp, (v) => (reduced ? 0 : -v * 44));
+  /**
+   * Taken out of the page altogether once it has faded, not just left at
+   * zero. Safari would sometimes keep painting the column's last frame at
+   * its last opacity after a smooth scroll to the next shot — an inline
+   * opacity change alone did not get its layer redrawn — and a visibility
+   * change is the kind of change it cannot skip.
+   */
+  const introVisibility = useTransform(introOpacity, (o) => (o > 0.001 ? "visible" : "hidden"));
   const ret = useTransform(cp, (v) => returnProgress(v, shotCount));
   const chromeOpacity = useTransform(ret, (r) => 1 - Math.min(1, r * 2.2));
   const returnOpacity = useTransform(ret, (r) => clamp01((r - 0.55) / 0.45));
@@ -118,7 +208,83 @@ export default function CaseDesktop({ project }: { project: Project }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [cp, jump, shotCount]);
 
-  const kicker = `${project.title} · ${project.yearLong ?? project.year}`.toUpperCase();
+  /**
+   * A sideways swipe steps a shot on a phone.
+   *
+   * The page steps on vertical scroll, and that stays. But the arrows point
+   * sideways, and a thumb follows them: a right-to-left swipe, with the
+   * little downward drift a thumb has, was read as a short scroll UP — the
+   * previous shot, the opposite of what was meant. Once a touch is plainly
+   * moving sideways it is kept from the scroller, and on release it steps
+   * by its direction if it travelled far enough or fast enough.
+   */
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !stage.mobile) return;
+    const sw = CASE.phone.swipe;
+    let start: { x: number; y: number; t: number } | null = null;
+    let sideways = false;
+    const onStart = (e: TouchEvent) => {
+      const t = e.touches[0];
+      start = t ? { x: t.clientX, y: t.clientY, t: performance.now() } : null;
+      sideways = false;
+    };
+    const onMove = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (!start || !t) return;
+      const dx = t.clientX - start.x;
+      const dy = t.clientY - start.y;
+      if (!sideways && Math.abs(dx) > sw.lock && Math.abs(dx) > Math.abs(dy)) sideways = true;
+      if (sideways && e.cancelable) e.preventDefault();
+    };
+    const onEnd = (e: TouchEvent) => {
+      const t = e.changedTouches[0];
+      if (!start || !t) return;
+      // Whatever the finger did, the snap that follows may not report.
+      settle();
+      const last = shotCount - 1;
+      if (!sideways) {
+        /**
+         * A tap on the viewer is the next shot. Short, still, and inside the
+         * viewer's live box; anywhere else is left alone, and the arrows are
+         * buttons of their own. Nothing past the last shot — the return
+         * ending is a scroll, not a step.
+         */
+        const held = performance.now() - start.t;
+        const moved = Math.hypot(t.clientX - start.x, t.clientY - start.y);
+        start = null;
+        if (held > sw.tapHold || moved > sw.lock) return;
+        const vx = viewer.x.get(), vy = viewer.y.get();
+        const inside =
+          t.clientX >= vx && t.clientX <= vx + viewer.w.get() &&
+          t.clientY >= vy && t.clientY <= vy + viewer.h.get();
+        if (!inside) return;
+        const at = stepAt();
+        // On the ending the card is the deck card again; a tap takes it home.
+        if (at >= shotCount) setLeaving(true);
+        else jump(at + 1);
+        return;
+      }
+      const dx = t.clientX - start.x;
+      const dt = Math.max(1, performance.now() - start.t) / 1000;
+      start = null;
+      const v = Math.abs(dx) / dt;
+      if (Math.abs(dx) < sw.travel && v < sw.velocity) return;
+      const at = stepAt();
+      jump(dx < 0 ? Math.min(shotCount, at + 1) : Math.max(0, at - 1));
+    };
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd);
+    el.addEventListener("touchcancel", onEnd);
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+    };
+  }, [stage.mobile, cp, jump, shotCount, viewer, settle]);
+
   const lines = titleLines(project);
 
   /**
@@ -134,18 +300,38 @@ export default function CaseDesktop({ project }: { project: Project }) {
    * `style` — these are laid out by the column they sit in, and putting a
    * wrapper around each one would change that layout to animate it.
    */
-  const rise = (step: number) =>
-    reduced
-      ? {}
-      : {
-          initial: { opacity: 0, y: CASE.enter.rise * stage.s },
-          animate: { opacity: 1, y: 0 },
-          transition: {
-            duration: CASE.enter.ms / 1000,
-            delay: (CASE.enter.lead + step * CASE.enter.stagger) / 1000,
-            ease: [...HOUSE] as [number, number, number, number],
-          },
-        };
+  const rise = (step: number) => {
+    if (reduced) return {};
+    const delay = (CASE.enter.lead + step * CASE.enter.stagger) / 1000;
+    return {
+      initial: { opacity: 0, y: CASE.enter.rise * stage.s },
+      animate: { opacity: 1, y: 0 },
+      transition: {
+        y: { ...heroSpring(CASE.enter.stiffness, CASE.enter.ratio, CASE.enter.mass), delay },
+        opacity: { duration: CASE.enter.fade / 1000, ease: "linear" as const, delay },
+      },
+    };
+  };
+
+  /**
+   * The arrows sit off the viewer's LIVE box, published by the layer from
+   * the card's own springs, so they move exactly as the container does —
+   * the same overshoot, the same settle — rather than on a spring of their
+   * own tuned to look like it. On the intro screen the viewer runs out to
+   * the right rail, so the next arrow is held at the edge of the stage
+   * instead, in the margin; the previous arrow has nowhere to go there and
+   * is not shown.
+   */
+  const mobile = stage.mobile;
+  const arrowSize = mobile ? CASE.phone.arrow * stage.s : 56 * stage.sx;
+  const arrowGap = mobile ? CASE.phone.arrowGap * stage.s : CASE.arrowGap * stage.sx;
+  const arrowLeftX = useTransform(viewer.x, (x: number) => x - arrowGap - arrowSize);
+  const arrowRightX = useTransform([viewer.x, viewer.w], ([x, w]) =>
+    Math.min((x as number) + (w as number) + arrowGap, stage.w - arrowSize - 4 * stage.sx),
+  );
+  const arrowTopY = useTransform([viewer.y, viewer.h], ([y, h]) =>
+    (y as number) + (h as number) / 2 - arrowSize / 2,
+  );
 
   return (
     <div
@@ -175,6 +361,16 @@ export default function CaseDesktop({ project }: { project: Project }) {
          * scroller's own mechanism is the right one.
          */
         scrollSnapType: "y mandatory",
+        /**
+         * On a phone the page sits ABOVE the card layer (40), so a swipe
+         * over the viewer is a swipe on the page. The viewer is the deck
+         * card in the persistent layer, which is beside this scroller, not
+         * inside it — a touch that lands on the card cannot scroll the
+         * page, and over the footage every touch landed on the card. There
+         * is nothing on the viewer to touch here, so the page takes it all.
+         * Desktop stays below: its pointer has no such problem.
+         */
+        zIndex: stage.mobile ? 41 : undefined,
       }}
     >
       <div style={{ position: "relative", height: caseScrollHeight(shotCount) }}>
@@ -234,7 +430,8 @@ export default function CaseDesktop({ project }: { project: Project }) {
               margin: "0 auto",
             }}
           >
-            <Header variant="case" kicker={kicker} />
+            {/* No project name up here: the headline below says it. */}
+            <Header variant="case" onBack={() => setLeaving(true)} />
 
             {/*
               Screen 01 — intro.
@@ -243,6 +440,18 @@ export default function CaseDesktop({ project }: { project: Project }) {
               each one. Without it the column mounts once and every project
               after the first would find its type already in place.
             */}
+            <motion.div
+              /**
+               * The way back: the column fades out, linear and quick, and
+               * only then does the route change and the card fly home. A
+               * stacking context of its own so it stays above the viewer
+               * while it is translucent.
+               */
+              animate={{ opacity: leaving ? 0 : 1 }}
+              transition={{ duration: CASE.leave.fade / 1000, ease: "linear" }}
+              style={{ position: "relative", zIndex: 54 }}
+            >
+            {mobile ? null : (
             <motion.div
               key={project.slug}
               style={{
@@ -253,6 +462,10 @@ export default function CaseDesktop({ project }: { project: Project }) {
                 zIndex: 54,
                 opacity: introOpacity,
                 y: introY,
+                visibility: introVisibility,
+                // Its own compositing layer, so the fade is the compositor's
+                // job rather than a repaint Safari may decide it can skip.
+                willChange: "opacity, transform",
               }}
             >
               <motion.h1
@@ -291,22 +504,40 @@ export default function CaseDesktop({ project }: { project: Project }) {
                 the centre is the difference between a rule appearing and a
                 rule being drawn.
               */}
+              {/*
+                Rises with its neighbours but does not fade: the draw below is
+                its entrance, and under the column's fade the line was already
+                most of the way across by the time it could be seen.
+              */}
               <motion.div
+                {...(reduced
+                  ? {}
+                  : {
+                      initial: { y: CASE.enter.rise * stage.s },
+                      animate: { y: 0 },
+                      transition: {
+                        ...heroSpring(CASE.enter.stiffness, CASE.enter.ratio, CASE.enter.mass),
+                        delay: (CASE.enter.lead + 2 * CASE.enter.stagger) / 1000,
+                      },
+                    })}
                 aria-hidden
-                initial={reduced ? false : { scaleX: 0 }}
-                animate={{ scaleX: 1 }}
-                transition={{
-                  duration: CASE.enter.ruleMs / 1000,
-                  delay: (CASE.enter.lead + 2 * CASE.enter.stagger) / 1000,
-                  ease: [...HOUSE] as [number, number, number, number],
-                }}
-                style={{
-                  height: 1,
-                  marginTop: 34 * ts,
-                  background: "var(--rule)",
-                  transformOrigin: "50% 50%",
-                }}
-              />
+                style={{ marginTop: 34 * ts }}
+              >
+                <motion.div
+                  initial={reduced ? false : { scaleX: 0 }}
+                  animate={{ scaleX: 1 }}
+                  transition={{
+                    duration: CASE.enter.ruleMs / 1000,
+                    delay: (CASE.enter.lead + 2 * CASE.enter.stagger) / 1000,
+                    ease: [...HOUSE] as [number, number, number, number],
+                  }}
+                  style={{
+                    height: 1,
+                    background: "var(--rule)",
+                    transformOrigin: "50% 50%",
+                  }}
+                />
+              </motion.div>
               <motion.dl
                 {...rise(3)}
                 style={{
@@ -330,9 +561,26 @@ export default function CaseDesktop({ project }: { project: Project }) {
                   <dt style={{ ...typeStyle(TYPE.label, ts), color: "var(--ink-3)" }}>
                     COLLABORATORS
                   </dt>
-                  <dd style={{ margin: 0 }}>{project.collaborators}</dd>
+                  <dd style={{ margin: 0 }}>
+                    {/* A name is one word to the line-breaker: it wraps
+                        between people — at a comma or an "and" — never
+                        through one. */}
+                    {project.collaborators
+                      .split(/(,\s*|\s+and\s+)/)
+                      .map((part, i) =>
+                        i % 2 ? (
+                          part
+                        ) : (
+                          <span key={i} style={{ whiteSpace: "nowrap" }}>
+                            {part}
+                          </span>
+                        ),
+                      )}
+                  </dd>
                 </div>
               </motion.dl>
+            </motion.div>
+            )}
             </motion.div>
 
             {/* Ghost cards fanning out behind the frame as it becomes a card. */}
@@ -381,6 +629,14 @@ export default function CaseDesktop({ project }: { project: Project }) {
                 opacity: chromeOpacity,
               }}
             >
+              {/*
+                On a phone the project's name is the first caption, and it
+                slides like every other. Desktop stages it as the headline of
+                the intro column instead, with its own arrival.
+              */}
+              {mobile ? (
+                <ShotTitle index={0} active={active} title={project.title} meta={project.yearLong ?? project.year} />
+              ) : null}
               {project.shots.map((shot, i) => (
                 <ShotTitle
                   key={shot.n}
@@ -430,13 +686,19 @@ export default function CaseDesktop({ project }: { project: Project }) {
                 side="left"
                 label="Previous shot"
                 disabled={active === 0}
+                x={arrowLeftX}
+                y={arrowTopY}
+                size={arrowSize}
                 onClick={() => jump(Math.max(0, active - 1))}
               />
               <StepArrow
                 side="right"
-                label="Next shot"
-                disabled={active >= shotCount - 1}
-                onClick={() => jump(Math.min(shotCount - 1, active + 1))}
+                label={active >= shotCount - 1 ? "Return to work" : "Next shot"}
+                disabled={false}
+                x={arrowRightX}
+                y={arrowTopY}
+                size={arrowSize}
+                onClick={() => jump(Math.min(shotCount, active + 1))}
               />
             </motion.div>
 
@@ -445,7 +707,7 @@ export default function CaseDesktop({ project }: { project: Project }) {
                 position: "absolute",
                 left: 0,
                 right: 0,
-                bottom: stage.top + CASE.ticksInset * s,
+                bottom: stage.top + stage.safeBottom + CASE.ticksInset * s,
                 zIndex: 70,
                 display: "flex",
                 flexDirection: "column",
@@ -486,42 +748,47 @@ function StepArrow({
   side,
   label,
   disabled,
+  x,
+  y,
+  size,
   onClick,
 }: {
   side: "left" | "right";
   label: string;
   disabled: boolean;
+  /** Top-left of the hit area, stage px, live from the viewer's box. */
+  x: MotionValue<number>;
+  y: MotionValue<number>;
+  /** The hit area's side, stage px. */
+  size: number;
   onClick: () => void;
 }) {
-  const { stage } = useStage();
   /**
-   * The arrows are horizontal furniture, so their SIZE comes off the
-   * horizontal scale as well as their inset.
-   *
-   * Splitting the two put the lane's outer edge on `sx` and its inner edge on
-   * `s`, so a taller window grew the mark inward while the frame beside it
-   * stayed put — the clearance between them fell from 25px to 12px purely
-   * because the window got taller. On one scale the lane is invariant.
+   * The size comes from the page: horizontal furniture on desktop, so off
+   * the horizontal scale there, and a phone's own measure on a phone.
    */
-  const s = stage.sx;
   const [hover, setHover] = useState(false);
 
   return (
-    <button
+    <motion.button
       type="button"
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
+      aria-hidden={disabled || undefined}
       onPointerEnter={() => setHover(true)}
       onPointerLeave={() => setHover(false)}
+      initial={false}
+      // Gone when there is nowhere to go; faint at rest, definite on approach.
+      animate={{ opacity: disabled ? 0 : hover ? 0.8 : 0.34 }}
+      transition={{ opacity: { duration: 0.3, ease: [...HOUSE] as [number, number, number, number] } }}
       style={{
         position: "absolute",
-        [side]: CASE.arrowInset * s,
-        top: "50%",
-        transform: "translateY(-50%)",
+        left: x,
+        top: y,
         zIndex: 62,
-        width: 56 * s,
-        height: 56 * s,
+        width: size,
+        height: size,
         display: "grid",
         placeItems: "center",
         border: 0,
@@ -529,15 +796,13 @@ function StepArrow({
         background: "none",
         color: "var(--ink)",
         cursor: disabled ? "default" : "pointer",
-        // Faint at rest, definite on approach, gone when there is nowhere to go.
-        opacity: disabled ? 0.12 : hover ? 0.8 : 0.34,
-        transition: `opacity .3s ${HOUSE_CSS}`,
+        pointerEvents: disabled ? "none" : "auto",
         padding: 0,
       }}
     >
       <svg
-        width={22 * s}
-        height={22 * s}
+        width={size * (22 / 56)}
+        height={size * (22 / 56)}
         viewBox="0 0 22 22"
         fill="none"
         aria-hidden
@@ -550,7 +815,7 @@ function StepArrow({
           strokeLinejoin="round"
         />
       </svg>
-    </button>
+    </motion.button>
   );
 }
 
@@ -567,10 +832,13 @@ function ShotTitle({
   index,
   active,
   title,
+  meta,
 }: {
   index: number;
   active: number;
   title: string;
+  /** A line under the title. The phone's intro caption carries the year. */
+  meta?: string;
 }) {
   const { stage } = useStage();
   const ts = stage.ts;
@@ -602,13 +870,18 @@ function ShotTitle({
     >
       <div
         style={{
-          ...typeStyle(TYPE.titleM, ts),
+          ...typeStyle(stage.mobile ? TYPE.titleMMobile : TYPE.titleM, ts),
           color: "var(--ink)",
           textWrap: "pretty",
         }}
       >
         {title}
       </div>
+      {meta ? (
+        <div style={{ paddingTop: 7, ...typeStyle(TYPE.numeral, ts), color: "var(--ink-3)" }}>
+          {meta}
+        </div>
+      ) : null}
     </motion.div>
   );
 }
