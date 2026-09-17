@@ -119,6 +119,20 @@ built with) rather than picked fresh, so everything on the site matches.
 A source whose name starts with `_` is held back and never encoded, which is
 where alternate takes live.
 
+### Posters
+
+`npm run posters` draws the stills the site falls back to while a clip is
+still arriving — one per project for the deck cards, and one per shot clip
+beside the clip and named after it. Run it after `npm run media`; it needs the
+same ffmpeg.
+
+It writes `lib/posters.generated.ts` as well, listing the clips it drew a still
+for. Nothing else should edit that file. The app reads it rather than deriving
+the poster path, so a still that was never drawn leaves the attribute off
+instead of 404ing — and a shot with no poster renders as an empty device, frame
+and caption correct and nothing inside, which is what this exists to prevent.
+
+
 Two things to know when adding a clip:
 
 - **Set `aspect` from the encoded file, not the export.** The viewer morphs to

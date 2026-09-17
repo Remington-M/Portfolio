@@ -3,10 +3,49 @@
  *
  * Clips that have a still beside them, as `<name>.jpg`. See the note in
  * `scripts/posters.mjs` for why this is a list rather than a derived path.
- *
- * Empty until the script is run on a machine with a full ffmpeg — which is
- * the same prerequisite `npm run media` already has. Empty is correct, not
- * broken: it means no shot carries a poster attribute, which is exactly the
- * behaviour the site had before.
  */
-export const CLIPS_WITH_POSTER = new Set<string>([]);
+export const CLIPS_WITH_POSTER = new Set<string>([
+  "/media/airbnb-reservations/avatar-pile-studies.mp4",
+  "/media/airbnb-reservations/guest-avatars.mp4",
+  "/media/airbnb-reservations/multi-supply-avatars.mp4",
+  "/media/airbnb-reservations/reservation-detail-desktop.mp4",
+  "/media/airbnb-reservations/reservation-detail.mp4",
+  "/media/airbnb-setup/about-you-editor.mp4",
+  "/media/airbnb-setup/add-offerings.mp4",
+  "/media/airbnb-setup/add-photos.mp4",
+  "/media/airbnb-setup/celebration.mp4",
+  "/media/airbnb-setup/experience-selection.mp4",
+  "/media/airbnb-setup/itinerary-intro.mp4",
+  "/media/airbnb-setup/menu-group-advance.mp4",
+  "/media/airbnb-setup/menu-image-fill.mp4",
+  "/media/airbnb-setup/menu-intro.mp4",
+  "/media/airbnb-setup/nav-bar-category.mp4",
+  "/media/airbnb-setup/nav-bar-thumbnail.mp4",
+  "/media/airbnb-setup/service-type-selection.mp4",
+  "/media/airbnb-setup/service-type.mp4",
+  "/media/airbnb-setup/setup-intro.mp4",
+  "/media/gesture-navigation/assistant-gesture.mp4",
+  "/media/gesture-navigation/back.mp4",
+  "/media/gesture-navigation/overview.mp4",
+  "/media/gesture-navigation/swipe-to-go-home.mp4",
+  "/media/google-pixel/app-opening.mp4",
+  "/media/google-pixel/assistant-invocation.mp4",
+  "/media/google-pixel/boot-animation.mp4",
+  "/media/google-pixel/google-to-g.mp4",
+  "/media/google-pixel/pixel-2-welcome.mp4",
+  "/media/google-pixel/pixel-3-welcome.mp4",
+  "/media/google-pixel/task-switching.mp4",
+  "/media/mys/amenities-empty-state.mp4",
+  "/media/mys/auto-arrange-desktop.mp4",
+  "/media/mys/auto-arrange.mp4",
+  "/media/mys/edit-podium.mp4",
+  "/media/mys/gallery-photo-view-grow.mp4",
+  "/media/mys/little-people-detail-loop.mp4",
+  "/media/mys/ltr-overshoot-presentation.mp4",
+  "/media/mys/ml-photo-arranging-presentation.mp4",
+  "/media/mys/ml-sorting-array.mp4",
+  "/media/mys/panel-navigation.mp4",
+  "/media/mys/photo-tour-desktop.mp4",
+  "/media/mys/photo-tour-room-expand.mp4",
+  "/media/mys/supertext.mp4",
+]);
