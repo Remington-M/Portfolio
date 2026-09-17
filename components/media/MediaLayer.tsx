@@ -21,6 +21,7 @@ import Link from "next/link";
 import { useStage } from "./stage";
 import { openingIndex, projects, stripeFill, type Shot } from "@/lib/projects";
 import { asset, media, poster } from "@/lib/asset";
+import { playWhenReady, preloadFor } from "@/lib/playback";
 import {
   CASE,
   SHADOW,
@@ -2307,8 +2308,13 @@ function ShotClip({
       // Always from the top. A clip that carries on from where it was left is
       // showing the middle of itself to someone arriving at its beginning.
       el.currentTime = 0;
-      const played = el.play();
-      if (played && played.catch) played.catch(() => {});
+      /**
+       * Held on its poster until it can run at speed, rather than started on
+       * the first frames to arrive. See `lib/playback.ts`. Returns the
+       * teardown for that wait, so stepping off a shot mid-wait cancels it
+       * instead of letting it start a clip nobody is looking at any more.
+       */
+      return playWhenReady(el);
     } else if (role === "out") {
       /**
        * Held, not stopped and not rewound.
@@ -2353,9 +2359,14 @@ function ShotClip({
       disableRemotePlayback
       controlsList="nodownload nofullscreen noremoteplayback"
 
-      // Metadata only. The file itself is fetched when playback starts, so a
-      // shot two steps away costs a few kilobytes rather than a few megabytes.
-      preload="metadata"
+      /**
+       * Metadata for the shots either side, the whole file for the one that is
+       * about to run — `playWhenReady` waits on a readiness the browser will
+       * never report for a clip that fetched a header and stopped. A shot two
+       * steps away still costs a few kilobytes rather than a few megabytes,
+       * which is what this attribute was for.
+       */
+      preload={preloadFor(playing && role === "in")}
       style={{
         /**
          * Overhangs its box by a pixel on every side.
@@ -2587,8 +2598,9 @@ function CardFace({
       return;
     }
     if (introIn && armed) {
-      const played = el.play();
-      if (played && played.catch) played.catch(() => {});
+      // Same hold as the shots — the opening clip is the first motion anyone
+      // sees, so it is the last one that should be seen stuttering.
+      return playWhenReady(el);
     } else if (introIn) {
       // Arrived but not started: parked on its first frame while it crosses.
       el.pause();
@@ -2732,7 +2744,16 @@ function CardFace({
         disableRemotePlayback
         controlsList="nodownload nofullscreen noremoteplayback"
 
-            preload="metadata"
+            /**
+             * Auto only on the active card's arriving clip, so the fetch
+             * overlaps the transition and `playWhenReady` has something to wait
+             * on. `introIn` alone is not that card: it is `activeShot === 0`,
+             * which every card parked at its overview satisfies — so on a
+             * project page it put three heroes on auto, and the two nobody was
+             * looking at pulled against the shot that was playing. `playing` is
+             * the flag that means this card and no other.
+             */
+            preload={preloadFor(playing && introIn)}
             style={{
               position: "absolute",
               ...clipBox(introOut ? clipOut : null),
