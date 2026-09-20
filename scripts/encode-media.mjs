@@ -54,6 +54,36 @@ const MAXRATE = "7M";
 const BUFSIZE = "14M";
 
 /**
+ * The average bitrate above which a clip is re-encoded under a binding cap.
+ *
+ * CRF alone decides quality, not size, so a clip of busy footage can come out
+ * at four times the rate of a flat one and nothing notices. That is fine until
+ * the rate passes what a connection can deliver: above it the clip arrives
+ * slower than it plays, and `lib/playback.ts` holds it on its still until it
+ * can run — a wait measured in seconds rather than the none everyone else
+ * gets. 1.5 Mb/s sits under the 1.6 Mb/s that Chrome calls Slow 4G, which is
+ * what a real connection degrades to on a train or at a conference.
+ *
+ * Seven of forty-four clips were over it, all of them the desktop captures and
+ * photo grids, the heaviest at 3.92 Mb/s.
+ */
+const RATE_CEILING_MBPS = 1.5;
+
+/**
+ * How far under the ceiling to set the cap, because the two are not the same
+ * number.
+ *
+ * `-maxrate` bounds the VBV, not the file: with `bufsize` at twice the rate
+ * there is room to sit above it through a busy passage and pay it back later,
+ * and the container adds its own overhead on top. Measured across the three
+ * heaviest clips, `-maxrate 1500k` landed at 1.36, 1.64 and 1.67 Mb/s — two of
+ * them above the very ceiling it was meant to enforce. At 1200k the same three
+ * came in at 1.15, 1.32 and 1.35. Four fifths is the margin that makes the cap
+ * mean what it says.
+ */
+const CAP_MARGIN = 0.8;
+
+/**
  * Fit inside MAX_SIDE without upscaling, keeping both sides even.
  *
  * `decrease` means the box is a ceiling rather than a target, so a clip already
@@ -104,7 +134,7 @@ const CROP = {
   "gesture-navigation/assistant-gesture.mp4": "1440:3004:0:19",
 };
 
-function args(src, dst, crop) {
+function args(src, dst, crop, cap) {
   return [
     "-hide_banner", "-loglevel", "error", "-y",
     "-i", src,
@@ -120,7 +150,16 @@ function args(src, dst, crop) {
     // and would fall back to software decoding, or fail, on much of the web.
     "-profile:v", "high", "-pix_fmt", "yuv420p",
     "-preset", "slow", "-crf", String(CRF),
-    "-maxrate", MAXRATE, "-bufsize", BUFSIZE,
+    /**
+     * Capped CRF. Without `cap` the ceiling is loose enough to be a spike
+     * guard and CRF decides everything; with it, CRF still decides quality
+     * wherever it fits underneath and the cap binds only on the passages that
+     * would have blown past it. That is why this is a second pass rather than
+     * a lower CRF: dropping quality everywhere to fix the few seconds that are
+     * actually too heavy costs the whole clip to fix part of it.
+     */
+    "-maxrate", cap ?? MAXRATE,
+    "-bufsize", cap ? `${parseInt(cap, 10) * 2}k` : BUFSIZE,
     // The moov atom belongs at the front. Without this the browser has to
     // fetch the end of the file before it can show frame one, which on a page
     // that autoplays a clip the moment it scrolls in is the whole delay.
@@ -194,7 +233,32 @@ for (const slug of slugs) {
     const before = await probe(src);
     const crop = CROP[`${slug}/${clip}`];
     await run("ffmpeg", args(src, dst, crop), { maxBuffer: 1 << 24 });
-    const after = await probe(dst);
+    let after = await probe(dst);
+
+    /**
+     * Measured rather than listed.
+     *
+     * A hand-kept list of the heavy clips would be right the day it was
+     * written and wrong the first time footage was recut — a clip that got
+     * busier would slip past it, and one that got simpler would stay capped
+     * for no reason. Encoding first and reading the rate off the result asks
+     * the only question that matters, and asks it of whatever is in the folder
+     * today.
+     */
+    const rate = (after.size * 8) / after.duration / 1e6;
+    let capped = null;
+    if (rate > RATE_CEILING_MBPS) {
+      capped = `${Math.round(RATE_CEILING_MBPS * CAP_MARGIN * 1000)}k`;
+      await run("ffmpeg", args(src, dst, crop, capped), { maxBuffer: 1 << 24 });
+      after = await probe(dst);
+      const got = (after.size * 8) / after.duration / 1e6;
+      if (got > RATE_CEILING_MBPS) {
+        console.log(
+          `  ! ${clip} still ${got.toFixed(2)}Mb/s after the cap — footage busy` +
+            ` enough that CAP_MARGIN needs looking at.`,
+        );
+      }
+    }
     encoded += 1;
 
     const mb = (n) => (n / 1e6).toFixed(1);
@@ -202,6 +266,8 @@ for (const slug of slugs) {
       `  ✓ ${clip.padEnd(30)} ${before.w}x${before.h} -> ${after.w}x${after.h}` +
         (crop ? `  cropped ${crop}` : "") +
         `  ${mb(before.size)}MB -> ${mb(after.size)}MB` +
+        `  ${((after.size * 8) / after.duration / 1e6).toFixed(2)}Mb/s` +
+        (capped ? ` (capped from ${rate.toFixed(2)})` : "") +
         `  aspect ${(after.w / after.h).toFixed(4)}`,
     );
   }
