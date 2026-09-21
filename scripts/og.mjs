@@ -42,7 +42,14 @@ const SENTENCE = [
 ];
 const LAST_WORD = "motion.";
 const EYEBROW = "Remington McElhaney";
-const PLACE = "San Francisco";
+/**
+ * Read rather than written down. The card said San Francisco for a while after
+ * the About page said Seattle, which is the failure a second copy of a fact
+ * always gets around to.
+ */
+const PLACE = JSON.parse(
+  await readFile(join(ROOT, "content/copy.json"), "utf8"),
+).about.based;
 const CREDIT = "Airbnb · Google";
 const DOMAIN = process.env.OG_DOMAIN ?? "remingtonm.com";
 
