@@ -1,0 +1,113 @@
+[
+  {
+    "slug": "home",
+    "title": "Remington McElhaney",
+    "chars": 176,
+    "headings": [
+      "H1: Work",
+      "H2: Google Pixel",
+      "H2: Gesture Navigation",
+      "H2: The New Google Assistant"
+    ],
+    "media": [
+      "//images.squarespace-cdn.com/content/v1/535ff5a5e4b0776c36cc244f/1443462455683-RAHZKQ0HL9RBBNMZRCNV/RM_Logo_15_Retina.png",
+      "https://images.squarespace-cdn.com/content/v1/535ff5a5e4b0776c36cc244f/1578076866194-3E0Y1JL7ZONNYFQ3SBAR/NGA_Website_07.jpg",
+      "https://images.squarespace-cdn.com/content/v1/535ff5a5e4b0776c36cc244f/1578550800174-RBSYM3EJADKE0FODQAD0/Pixel_Welcome_Portfolio.gif",
+      "https://images.squarespace-cdn.com/content/v1/535ff5a5e4b0776c36cc244f/1645120480422-R1HQX8T73M2FPZMJK2CE/Gesture_Nav_03.jpg"
+    ],
+    "embeds": []
+  },
+  {
+    "slug": "meet-me",
+    "title": "Meet Me \u2014 Remington McElhaney",
+    "chars": 716,
+    "headings": [
+      "H1: Meet Me"
+    ],
+    "media": [
+      "//images.squarespace-cdn.com/content/v1/535ff5a5e4b0776c36cc244f/1443462455683-RAHZKQ0HL9RBBNMZRCNV/RM_Logo_15_Retina.png",
+      "https://images.squarespace-cdn.com/content/v1/535ff5a5e4b0776c36cc244f/1577693944431-8EIIF4GKP1S5OMUEZNQR/McElhaney_Walking_03.jpg"
+    ],
+    "embeds": []
+  },
+  {
+    "slug": "reel",
+    "title": "Reel \u2014 Remington McElhaney",
+    "chars": 57,
+    "headings": [
+      "H1: Reel"
+    ],
+    "media": [
+      "//images.squarespace-cdn.com/content/v1/535ff5a5e4b0776c36cc244f/1443462455683-RAHZKQ0HL9RBBNMZRCNV/RM_Logo_15_Retina.png"
+    ],
+    "embeds": [
+      "https://fast.wistia.net/embed/iframe/mnmidplafb"
+    ]
+  },
+  {
+    "slug": "swipe-to-go-home",
+    "title": "Swipe to go home - Case Study \u2014 Remington McElhaney",
+    "chars": 4998,
+    "headings": [
+      "H1: Swipe to go home - Case Study",
+      "H2: Goals",
+      "H3: For Android 10, we were tasked with redesigning the system navigation to be gestural instead of the traditional button navigation. Access to home was one of the most frequently used and visible transitions for system navigation. It was crucial that this gesture felt responsive to users input. In order to do that, we needed to design a transition that allowed the user to feel in control, yet still be consistent. There needed to be a physicality to the gesture unlike any animation previously implemented in Android. In order to meet this goal new designs, workflows and engineering all needed to come together to make one beautiful and seamless transition.",
+      "H2: Design",
+      "H3: The transition is composed of two main parts the",
+      "H3: app",
+      "H3: window animation",
+      "H3: and the",
+      "H3: home contents",
+      "H3: (launcher) animation.",
+      "H3: App Window Transition",
+      "H3: The primary way users interact with the gesture navigation is by directly manipulating the app window. A fling of the app window collapses it into its app icon (if available) on the home screen. One design consideration was the varying positions app icons can take on the home screen. The motion path the window follows needed to feel consistent regardless of the icon position. In order to create consistency an arced motion path with a vertical drop at the end was designed. This path felt reflective of the users flinging the app into place as well as created a directional motion that flowed into the home contents animating and guided the users focus to the contents on the home screen.",
+      "H2: Implementation",
+      "H3: Physics",
+      "H3: Creating a physical animation was crucial to this motion feeling responsive to users input. This was created primarily by utilizing springs in Android and combining that with the users fling velocity to create physical and unique animations.",
+      "H3: Velocity is key",
+      "H3: The primary way to enable an animation to feel physical - is to allow the input velocity to control as many aspects of the motion as possible. So when a user flings we capture the velocity of the fling and then take that number and use that to drive many aspects of the motion.",
+      "H3: Velocity can be used to:",
+      "H3: Direct the motion path of the window.",
+      "H3: Adjust the scale of the window (by influencing the tension of the spring controlling the scale).",
+      "H3: Determine how quickly the window travels to its destination (by influencing the tension of the spring bringing the window to its icon position).",
+      "H3: Control how much the home screen contents move (by changing the Y transition amount for the home screen contents)",
+      "H3: Basically - the more aspects of the animation you can control with a spring animation the more opportunities you have to then map the velocity to the springs parameters.",
+      "H3: Velocity mapping in action",
+      "H3: In this example, you can see how the window close animation can be controlled by a spring. The dampening is set to 1 so there is no \"springiness\" to the animation but utilizing springs allows all of the great physical properties of springs to still be used.",
+      "H3: Once a fling is detected, you can take the start velocity (measured in px/sec) and then use that to dynamically change the values of the spring. So in this example the example on the left has a slower start velocity so the springs tension is set to 150. The example on the right shows a higher start velocity so the springs tension can be set to 400 resulting in a faster animation.",
+      "H3: Controlling the animation",
+      "H3: One challenge we faced was how to we control or put a limit to these physical motions? While we want the window to feel like it was responding to the users input we did not want the window to be going off screen or creating too extreme of results. Typically with timed animations you can control everything down to the millisecond but with physical animations that was no longer true. One way to solve for this is to give users a range that they can operate in. For example like with the window animation above you can set a range for the spring tension to be 150-400 and then map that to the range of input velocities. That way users will feel in control by having different velocities provide different results, but it will be in a controlled and consistent manner. Physics allow each experience to be both unique yet expected.",
+      "H3: Collaborating with engineering",
+      "H3: It should go without saying that none of this happens without a deep collaboration with engineering. These things take time and a great deal of effort from engineering to get right. One helpful thing we found was to create a way for the designer to be able to modify values in live code. So this APK was created for me so I could adjust spring values on my own and then return with updated values and feedback. This APK started with just two values and grew over time as I wanted to tune more and more aspects of the animation.",
+      "H3: The text below it was useful for debugging so we could validate if our changes were having the effect we expected them to."
+    ],
+    "media": [
+      "//images.squarespace-cdn.com/content/v1/535ff5a5e4b0776c36cc244f/1443462455683-RAHZKQ0HL9RBBNMZRCNV/RM_Logo_15_Retina.png",
+      "https://images.squarespace-cdn.com/content/v1/535ff5a5e4b0776c36cc244f/7f6c16e4-19c0-4d6f-8a9b-0d1f2ab09c0e/k8l1mlmy-Untitled-1.jpeg"
+    ],
+    "embeds": [
+      "https://fast.wistia.net/embed/iframe/0m1hxj1x97",
+      "https://fast.wistia.net/embed/iframe/c98gjljo1v",
+      "https://fast.wistia.net/embed/iframe/rc5vcgi6jx",
+      "https://fast.wistia.net/embed/iframe/ub92d5p9zj"
+    ]
+  },
+  {
+    "slug": "work2",
+    "title": "Remington McElhaney",
+    "chars": 176,
+    "headings": [
+      "H1: Work",
+      "H2: Google Pixel",
+      "H2: Gesture Navigation",
+      "H2: The New Google Assistant"
+    ],
+    "media": [
+      "//images.squarespace-cdn.com/content/v1/535ff5a5e4b0776c36cc244f/1443462455683-RAHZKQ0HL9RBBNMZRCNV/RM_Logo_15_Retina.png",
+      "https://images.squarespace-cdn.com/content/v1/535ff5a5e4b0776c36cc244f/1578076866194-3E0Y1JL7ZONNYFQ3SBAR/NGA_Website_07.jpg",
+      "https://images.squarespace-cdn.com/content/v1/535ff5a5e4b0776c36cc244f/1578550800174-RBSYM3EJADKE0FODQAD0/Pixel_Welcome_Portfolio.gif",
+      "https://images.squarespace-cdn.com/content/v1/535ff5a5e4b0776c36cc244f/1645120480422-R1HQX8T73M2FPZMJK2CE/Gesture_Nav_03.jpg"
+    ],
+    "embeds": []
+  }
+]
