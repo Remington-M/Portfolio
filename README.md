@@ -9,6 +9,7 @@ npm install
 npm run dev          # http://localhost:3000
 npm run build        # static-exportable production build
 npm run verify       # regression test for the video-continuity invariant
+npm run verify:phone # the layout at phone sizes, upright and sideways
 ```
 
 ## Stack
@@ -64,7 +65,7 @@ snaps, and scroll drives the cards directly.
 | `content/copy.json` | Everything written: overviews, collaborators, shot titles, the About page |
 | `components/media/` | The persistent layer and shared stage state |
 | `components/home/` | Hero, deck scrubber, ledger |
-| `components/case/` | Project page — desktop shot stepping, mobile carousel |
+| `components/case/` | Project page — one viewer stepped by scroll, arrows, swipe or tap, on every screen |
 
 ### The card ratio rule
 
@@ -80,6 +81,26 @@ Two layouts are designed: mobile below 1100px, desktop above. Tablet is
 deliberately not designed — the desktop layout scales down instead, per the
 handoff. Desktop content sits in a centred band capped at 1440px, so it breathes
 on wide monitors without the ledger drifting away from the deck.
+
+### Phones
+
+The phone layout is fitted, not just scaled. A phone browser with its
+toolbars showing gives the page far less height than the 844px the layout was
+drawn at — an iPhone SE about 550 — and type does not shrink with the stage,
+so the deck card and the project viewer take whatever room is left between
+the header and the title under them (`phoneRoom`, `phoneTitleTop` in
+`lib/geometry.ts`). The viewer runs to within 12px of the screen's edges; the
+step arrows sit either side of the counter rather than either side of it.
+
+Held sideways (wider than tall, under 520px of height) the project page lays
+out sideways too: the viewer takes the full height of the screen, which makes
+a desktop recording about three times the area it can be upright, and the way
+back, the caption and the counter stand in a column down the right. The home
+deck has no sideways design; it keeps the upright one, small.
+
+`npm run verify:phone` walks a project page and the deck at seven phone
+sizes, five upright and two sideways. The other verify scripts all run at
+1440×900 and cannot see a phone fault.
 
 ## Browser support notes
 
@@ -119,6 +140,18 @@ built with) rather than picked fresh, so everything on the site matches.
 
 A source whose name starts with `_` is held back and never encoded, which is
 where alternate takes live.
+
+### Phone copies
+
+`npm run media:phone` draws a second copy of each clip with its longest side
+held to 1280, at `public/media/<slug>/phone/<name>.mp4`, and lists the ones
+worth keeping in `lib/renditions.generated.ts`. A phone is offered that copy
+through `<source media="(max-width: 600px)">` and never fetches the large
+one; across the site that is about half the bytes. Run it after `npm run
+media`. It reads the encoded clips rather than the raw exports, so it works
+from a checkout alone. If the clips are ever served from another origin
+(`NEXT_PUBLIC_MEDIA_BASE`), the `phone/` folders have to be uploaded with
+them.
 
 ### Posters
 

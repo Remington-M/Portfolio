@@ -174,6 +174,8 @@ export function StageProvider({ children }: { children: ReactNode }) {
     mobile: false,
     safeTop: 0,
     safeBottom: 0,
+    safeLeft: 0,
+    safeRight: 0,
   });
   const [transitionKey, setTransitionKey] = useState(0);
 
@@ -235,6 +237,8 @@ export function StageProvider({ children }: { children: ReactNode }) {
       const root = getComputedStyle(document.documentElement);
       const safeTop = parseFloat(root.getPropertyValue("--safe-top")) || 0;
       const safeBottom = parseFloat(root.getPropertyValue("--safe-bottom")) || 0;
+      const safeLeft = parseFloat(root.getPropertyValue("--safe-left")) || 0;
+      const safeRight = parseFloat(root.getPropertyValue("--safe-right")) || 0;
       setViewport((prev) => {
         const mobile = w < BREAKPOINT.desktop;
         if (
@@ -242,10 +246,12 @@ export function StageProvider({ children }: { children: ReactNode }) {
           prev.h === h &&
           prev.mobile === mobile &&
           prev.safeTop === safeTop &&
-          prev.safeBottom === safeBottom
+          prev.safeBottom === safeBottom &&
+          prev.safeLeft === safeLeft &&
+          prev.safeRight === safeRight
         )
           return prev;
-        return { w, h, mobile, safeTop, safeBottom };
+        return { w, h, mobile, safeTop, safeBottom, safeLeft, safeRight };
       });
     };
     sync();
@@ -262,8 +268,18 @@ export function StageProvider({ children }: { children: ReactNode }) {
       makeStage(viewport.w, viewport.h, viewport.mobile, {
         top: viewport.safeTop,
         bottom: viewport.safeBottom,
+        left: viewport.safeLeft,
+        right: viewport.safeRight,
       }),
-    [viewport.w, viewport.h, viewport.mobile, viewport.safeTop, viewport.safeBottom],
+    [
+      viewport.w,
+      viewport.h,
+      viewport.mobile,
+      viewport.safeTop,
+      viewport.safeBottom,
+      viewport.safeLeft,
+      viewport.safeRight,
+    ],
   );
 
   const state = useMemo<StageState>(

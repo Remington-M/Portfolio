@@ -21,6 +21,7 @@ import {
   caseCaption,
   caseScrollHeight,
   ghostCards,
+  phoneColumnX,
   returnProgress,
   stageY,
 } from "@/lib/geometry";
@@ -325,6 +326,14 @@ export default function CaseView({ project }: { project: Project }) {
    * is not shown.
    */
   const mobile = stage.mobile;
+  /**
+   * A phone on its side: the viewer has the height of the screen, and the
+   * caption and the counter stand in a column to its right. See
+   * `CASE.phone.landscape`.
+   */
+  const side = stage.landscape;
+  const sideX = phoneColumnX(stage);
+  const sideW = CASE.phone.landscape.column - CASE.phone.landscape.pad;
   const arrowSize = mobile ? CASE.phone.arrow : 56 * stage.sx;
   const arrowGap = CASE.arrowGap * stage.sx;
   const arrowLeftX = useTransform(viewer.x, (x: number) => x - arrowGap - arrowSize);
@@ -637,14 +646,18 @@ export default function CaseView({ project }: { project: Project }) {
             <motion.div
               style={{
                 position: "absolute",
-                left: 0,
-                right: 0,
-                top: caption,
+                ...(side
+                  ? {
+                      left: sideX,
+                      width: sideW,
+                      top: stage.h * CASE.phone.landscape.captionTop,
+                      textAlign: "left" as const,
+                    }
+                  : { left: 0, right: 0, top: caption, textAlign: "center" as const }),
                 // The title's own line box. It was 56, which left room for a
                 // meta line that is no longer set beneath it.
                 height: 32 * ts,
                 zIndex: 56,
-                textAlign: "center",
                 opacity: chromeOpacity,
               }}
             >
@@ -726,17 +739,29 @@ export default function CaseView({ project }: { project: Project }) {
             <motion.div
               style={{
                 position: "absolute",
-                left: 0,
-                right: 0,
-                bottom: stage.top + stage.safeBottom + CASE.ticksInset * s,
+                ...(side
+                  ? {
+                      // Stood at the foot of the side column. Pulled left by
+                      // the arrow's overhang, so the chevron — not the edge
+                      // of its hit area — lines up with the caption above.
+                      left: sideX - (arrowSize - arrowSize * (22 / 56)) / 2,
+                      bottom: Math.max(stage.safeBottom, 0) + 28,
+                      alignItems: "flex-start" as const,
+                    }
+                  : {
+                      left: 0,
+                      right: 0,
+                      bottom: stage.top + stage.safeBottom + CASE.ticksInset * s,
+                      alignItems: "center" as const,
+                    }),
                 zIndex: 70,
                 display: "flex",
                 flexDirection: "column",
-                alignItems: "center",
                 gap: 12 * ts,
                 opacity: chromeOpacity,
               }}
             >
+              {side ? null : (
               <Ticks
                 count={shotCount}
                 active={active}
@@ -745,6 +770,7 @@ export default function CaseView({ project }: { project: Project }) {
                   i === 0 ? "Project overview" : `Shot ${i} of ${shotCount - 1}`
                 }
               />
+              )}
               {/*
                 On a phone the arrows sit either side of the counter rather
                 than either side of the viewer: the viewer then runs nearly

@@ -81,13 +81,25 @@ export type Stage = {
    */
   safeTop: number;
   safeBottom: number;
+  /** The same for the sides, which only matter once the phone is turned. */
+  safeLeft: number;
+  safeRight: number;
+  /**
+   * A phone on its side: wider than tall, and too short for the upright
+   * layout. The project page lays itself out sideways for this — see
+   * `CASE.phone.landscape`.
+   */
+  landscape: boolean;
 };
 
 export function makeStage(
   vw: number,
   vh: number,
   mobile: boolean,
-  safe: { top: number; bottom: number } = { top: 0, bottom: 0 },
+  safe: { top: number; bottom: number; left?: number; right?: number } = {
+    top: 0,
+    bottom: 0,
+  },
 ): Stage {
   const ref = mobile ? MOBILE_REF : DESKTOP_REF;
   const min = mobile ? SCALE.min.mobile : SCALE.min.desktop;
@@ -99,6 +111,9 @@ export function makeStage(
     mobile,
     safeTop: safe.top,
     safeBottom: safe.bottom,
+    safeLeft: safe.left ?? 0,
+    safeRight: safe.right ?? 0,
+    landscape: mobile && vw > vh && vh < CASE.phone.landscape.maxH,
     s,
     sx: clamp(w / ref.w, min, 1),
     ts: 1 + Math.max(0, s - 1) * SCALE.typeRate,
@@ -149,14 +164,33 @@ export function phoneTitleTop(stage: Stage): number {
 }
 
 /**
- * The room the project viewer has on a phone: from under the back link to
- * just above the caption, and the width of the screen less a small margin.
+ * Where the side column begins on a phone held sideways, in stage px: the
+ * left edge of the back link, the caption and the counter.
+ */
+export function phoneColumnX(stage: Stage): number {
+  return stage.w - stage.safeRight - CASE.phone.landscape.column;
+}
+
+/**
+ * The room the project viewer has on a phone, and the line it is centred on.
+ *
+ * Upright: from under the back link to just above the caption, the width of
+ * the screen less a small margin. On its side: the whole height of the
+ * screen, and everything left of the side column.
  */
 export function phoneRoom(stage: Stage) {
   const p = CASE.phone;
+  if (stage.landscape) {
+    const m = p.landscape.margin;
+    const left = Math.max(m, stage.safeLeft);
+    const right = Math.max(left + 1, phoneColumnX(stage) - m);
+    const top = Math.max(m, stage.safeTop);
+    const bottom = Math.max(top + 1, stage.h - Math.max(m, stage.safeBottom));
+    return { top, bottom, w: right - left, cx: (left + right) / 2 };
+  }
   const top = Math.max(0, stage.top) + stage.safeTop + p.roomTop * stage.s;
   const bottom = Math.max(top + 1, phoneTitleTop(stage) - p.captionGap * stage.s);
-  return { top, bottom, w: Math.max(1, stage.w - p.gutter * 2) };
+  return { top, bottom, w: Math.max(1, stage.w - p.gutter * 2), cx: stage.w / 2 };
 }
 
 /* ------------------------------------------------------------------ *
@@ -733,7 +767,10 @@ export function caseFrame(
       base.h * s * (base.w / base.h) * fit;
     y = stageY(stage, 95);
   } else {
-    x = stage.w / 2 - w / 2;
+    // Centred in its room, which on a phone held sideways is not the
+    // middle of the screen; the return ending carries it back there.
+    const cx = room ? (r > 0 ? L(room.cx, stage.w / 2) : room.cx) : stage.w / 2;
+    x = cx - w / 2;
     /**
      * Centred, not sat on a baseline. The viewer is one player changing shape
      * between clips, and that reads as a single object growing and shrinking

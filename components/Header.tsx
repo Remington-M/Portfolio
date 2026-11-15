@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useStage } from "./media/stage";
 import { CASE, TYPE, type as typeStyle } from "@/lib/design";
+import { phoneColumnX } from "@/lib/geometry";
 
 export default function Header({
   variant,
@@ -24,8 +25,13 @@ export default function Header({
   // is a horizontal measurement and takes the horizontal scale.
   const sideX = (variant === "case" ? CASE.intro.rail : 64) * stage.sx;
   // On a phone the bar sits below the status bar, not under it.
+  // Held sideways, a project's way back heads the side column rather than
+  // sitting in the corner, where the viewer now is; and any bar keeps clear
+  // of the notch at whichever end it is on.
   const pad = mobile
-    ? `${stage.top + stage.safeTop + 22 * stage.s}px ${24 * stage.sx}px`
+    ? stage.landscape && variant === "case"
+      ? `${Math.max(stage.safeTop, 0) + 24}px ${stage.safeRight + 20}px 0 ${phoneColumnX(stage)}px`
+      : `${stage.top + stage.safeTop + 22 * stage.s}px ${24 * stage.sx + stage.safeRight}px ${22 * stage.s}px ${24 * stage.sx + stage.safeLeft}px`
     : `${stage.top + 28 * stage.s}px ${sideX}px`;
 
   /**

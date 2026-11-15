@@ -6,7 +6,8 @@
  * header and counter pushed off the edges of one, and the return card hidden
  * behind its own ghost fan. Each is a thing a desktop run cannot see, so this
  * walks the same pages at phone sizes — including the short ones a browser
- * with its toolbars showing actually gives a page — and checks them.
+ * with its toolbars showing actually gives a page, and two held sideways —
+ * and checks them.
  *
  *   node scripts/verify-phone.mjs [baseUrl]
  *
@@ -25,6 +26,9 @@ const SIZES = [
   [390, 664],
   [390, 844],
   [430, 932],
+  // On their side: the viewer takes the height, the caption a side column.
+  [844, 390],
+  [667, 375],
 ];
 
 const browser = await chromium.launch({
@@ -74,15 +78,24 @@ for (const size of SIZES) {
       fail(size, `${at}: viewer, caption, back link or next arrow missing`);
       continue;
     }
-    if (m.title.top < m.viewer.bottom)
-      fail(size, `${at}: caption (top ${m.title.top.toFixed(0)}) is over the viewer (bottom ${m.viewer.bottom.toFixed(0)})`);
-    if (m.viewer.top < m.back.bottom)
-      fail(size, `${at}: viewer runs under the back link`);
+    if (width > height) {
+      // Sideways, everything else stands to the RIGHT of the viewer.
+      if (m.title.left < m.viewer.right || m.back.left < m.viewer.right)
+        fail(size, `${at}: the side column (left ${m.title.left.toFixed(0)}) is over the viewer (right ${m.viewer.right.toFixed(0)})`);
+      if (m.viewer.top < 0 || m.viewer.bottom > m.vh)
+        fail(size, `${at}: viewer is taller than the screen`);
+      if (m.title.right > m.vw) fail(size, `${at}: caption runs off the right`);
+    } else {
+      if (m.title.top < m.viewer.bottom)
+        fail(size, `${at}: caption (top ${m.title.top.toFixed(0)}) is over the viewer (bottom ${m.viewer.bottom.toFixed(0)})`);
+      if (m.viewer.top < m.back.bottom)
+        fail(size, `${at}: viewer runs under the back link`);
+    }
     if (m.viewer.left < 0 || m.viewer.right > m.vw)
       fail(size, `${at}: viewer is wider than the screen`);
     if (m.back.top < 0) fail(size, `${at}: back link is off the top`);
-    if (m.next.bottom > m.vh + 0.5 || m.next.top < m.title.bottom - 0.5)
-      fail(size, `${at}: next arrow is off the bottom or over the caption`);
+    if (m.next.bottom > m.vh + 0.5 || m.next.right > m.vw || m.next.top < m.title.bottom - 0.5)
+      fail(size, `${at}: next arrow is off the screen or over the caption`);
   }
 
   // The return ending: the fan must be BEHIND the card, which on a phone

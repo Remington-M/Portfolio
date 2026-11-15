@@ -1577,6 +1577,27 @@ export const CASE = {
     /** The step arrows' hit size. A thumb's, so it does not scale. */
     arrow: 44,
     /**
+     * The phone on its side.
+     *
+     * Turning the phone is the one thing that makes a wide clip large on
+     * it: upright, a desktop recording can only ever be the width of the
+     * screen, and on its side it can be the HEIGHT of one — three times the
+     * area. So below `maxH` of height, in landscape, the page stops
+     * stacking. The viewer takes the full height of the screen less
+     * `margin`, and everything that was under it — the way back, the
+     * caption, the counter and its arrows — moves into a column `column`
+     * wide down the right-hand side. The tick row is dropped: fourteen
+     * ticks do not fit a column, and the counter beside the arrows already
+     * says where you are.
+     *
+     * Taller than `maxH` is a tablet on its side, which has the room for
+     * the upright layout and keeps it. `captionTop` is where the caption
+     * starts, as a fraction of the height; it is anchored at its top so a
+     * title that wraps to three lines grows downward and nothing above it
+     * moves.
+     */
+    landscape: { maxH: 520, margin: 12, column: 196, pad: 20, captionTop: 0.3 },
+    /**
      * The sideways swipe, which steps a shot: left for the next, right for
      * the one before, the way the arrows point. Travel in px past which a
      * touch counts as sideways and is kept from scrolling the page, and the
