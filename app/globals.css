@@ -1,32 +1,14 @@
 /* ------------------------------------------------------------------ *
  * Faces
  *
- * Söhne is licensed from Klim and is NOT in this repository — drop
- * `soehne-buch.woff2` and `soehne-kraftig.woff2` into `public/fonts/` and
- * these resolve. Until then every sans face falls back to system-ui, which
- * is the right failure: the layout is correct and only the letterforms are
- * wrong, rather than the page not rendering.
+ * Neither face is declared here. Both go through `next/font` in
+ * `app/layout.tsx`, which is what gives them a hashed URL that follows the
+ * deployment's base path, a preload, and a metric-matched fallback. They
+ * arrive as the two custom properties the stacks below read.
  *
- * The `test-soehne-*` files are trial-licence only and carry a reduced glyph
- * set. They must not be shipped.
- *
- * Two weights, and there will never be a third: there is no Halbfett licence,
- * so nothing on this site is heavier than Kräftig.
+ * Two weights of the sans, and there will never be a third: there is no
+ * Halbfett licence, so nothing on this site is heavier than Kräftig.
  * ------------------------------------------------------------------ */
-@font-face {
-  font-family: "Soehne";
-  src: url("/fonts/soehne-buch.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Soehne";
-  src: url("/fonts/soehne-kraftig.woff2") format("woff2");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
-}
 
 /* ------------------------------------------------------------------ *
  * Colour tokens
@@ -103,7 +85,7 @@
   --shadow-a: 1;
   --shadow-edge-a: 1;
 
-  --font-sans: "Soehne", system-ui, -apple-system, sans-serif;
+  --font-sans: var(--font-soehne), system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, monospace;
 
   /**
@@ -113,6 +95,9 @@
    */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* The notch and the rounded corners, once the phone is on its side. */
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 
   /* Tells the browser to theme its own furniture — scrollbars, form
      controls, the flash of background before paint. */

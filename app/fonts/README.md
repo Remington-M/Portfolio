@@ -4,9 +4,10 @@
     soehne-kraftig.woff2   # 500, Kräftig
 
 Licensed from [Klim Type Foundry](https://klim.co.nz/retail-fonts/soehne/).
-`app/globals.css` declares the `@font-face` rules that point at these two
-files; if they are ever missing the sans falls back to `system-ui`, so the
-layout stays correct and only the letterforms are wrong.
+`app/layout.tsx` loads these two files through `next/font/local`, which
+hashes them into the build, preloads them and follows the deployment's base
+path. If they are ever missing the build fails rather than falling back.
+`scripts/og.mjs` reads them from here too.
 
 Do **not** add the `test-soehne-*` trial files: trial licence only, and a
 reduced glyph set.

@@ -118,8 +118,8 @@ async function plexMono() {
 
 async function html() {
   const [buch, kraftig, mono] = await Promise.all([
-    dataUri(join(ROOT, "public", "fonts", "soehne-buch.woff2")),
-    dataUri(join(ROOT, "public", "fonts", "soehne-kraftig.woff2")),
+    dataUri(join(ROOT, "app", "fonts", "soehne-buch.woff2")),
+    dataUri(join(ROOT, "app", "fonts", "soehne-kraftig.woff2")),
     plexMono(),
   ]);
 

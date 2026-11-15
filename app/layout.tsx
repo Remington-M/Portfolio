@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import { StageProvider } from "@/components/media/stage";
 import { site } from "@/lib/site";
 import MediaLayer from "@/components/media/MediaLayer";
@@ -10,9 +11,6 @@ import "./globals.css";
  * next/font downloads and self-hosts this at build time, so there is no
  * request to Google at runtime and no flash of unstyled text.
  *
- * The sans is not here: Söhne is licensed and self-hosted from
- * `public/fonts/`, declared as @font-face in `globals.css`. Archivo used to
- * be loaded here and is gone.
  */
 const plexMono = IBM_Plex_Mono({
   subsets: ["latin"],
@@ -27,6 +25,29 @@ const plexMono = IBM_Plex_Mono({
  * of the page they came from, so a root-relative image path is useless to
  * them. It comes from `lib/site.ts` so the host is configured in one place.
  */
+/**
+ * Söhne, licensed from Klim and self-hosted from `app/fonts/`.
+ *
+ * Through `next/font` rather than a hand-written @font-face, for three
+ * things a raw `url("/fonts/…")` could not do. The URL follows the base
+ * path, so the face loads when the site is served from a subdirectory —
+ * written by hand it 404'd on the GitHub project page and the whole site
+ * fell back to system-ui. Both weights are preloaded, so the hero is not
+ * set once in the fallback and again when the face lands. And the fallback
+ * is metric-matched, so what little swap is left does not move the lines.
+ *
+ * If the files are ever missing the build fails here, loudly, rather than
+ * shipping the wrong letterforms quietly.
+ */
+const soehne = localFont({
+  src: [
+    { path: "./fonts/soehne-buch.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/soehne-kraftig.woff2", weight: "500", style: "normal" },
+  ],
+  variable: "--font-soehne",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
   title: {
@@ -83,7 +104,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={plexMono.variable}>
+    <html lang="en" className={`${plexMono.variable} ${soehne.variable}`}>
       <body>
         <StageProvider>
           {children}
