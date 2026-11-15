@@ -1,5 +1,6 @@
 "use client";
 
+import { tuneKeysLive } from "@/lib/tuneAccess";
 import { useEffect, useState } from "react";
 import {
   heroRead,
@@ -51,6 +52,7 @@ export default function HeroTunePanel() {
       if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)))
         return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (!tuneKeysLive()) return;
       if (e.key === "h" || e.key === "H") setOpen((v) => !v);
       if ((e.key === "r" || e.key === "R") && open) replayHero();
     };
