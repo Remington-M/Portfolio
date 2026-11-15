@@ -9,6 +9,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "media": "node scripts/encode-media.mjs",
+    "media:phone": "node scripts/encode-phone.mjs",
     "posters": "node scripts/posters.mjs",
     "og": "node scripts/og.mjs",
     "verify": "node scripts/verify-continuity.mjs",
