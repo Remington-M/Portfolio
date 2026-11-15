@@ -124,8 +124,19 @@ export function cardFromWidth(width: number) {
  * the stage, so the composition stays centred rather than pinned to the top.
  * ------------------------------------------------------------------ */
 export const SCALE = {
-  /** Floor on short viewports. Below this the layout would stop being legible. */
-  min: { desktop: 0.68, mobile: 0.72 },
+  /**
+   * Floor on short viewports. Below this the layout would stop being legible.
+   *
+   * The phone's floor is far lower than the desktop's, because a phone's type
+   * does not ride this scale — only its geometry does — so there is nothing
+   * to become illegible, and the floor it had was doing harm. At 0.72 the
+   * stage stopped shrinking at 608px of height, and a phone browser with its
+   * toolbars showing is often shorter than that (an iPhone SE gives the page
+   * about 550). Past the floor the stage is taller than the window and is
+   * centred on it, so the header was cut off above, the counter below, and
+   * the title was drawn over the bottom of the card.
+   */
+  min: { desktop: 0.68, mobile: 0.3 },
   /**
    * Ceiling on tall ones. Without a cap a 1440px-tall display would ask for a
    * 1120px card; this stops the deck becoming billboard-sized.
@@ -1102,7 +1113,15 @@ export const DECK = {
     step: 400,
     /** Authored card is 252x548 at the 390x844 reference. */
     cardHeight: 548,
-    cardHeightMin: 420,
+    /**
+     * A last resort, not a layout rule. It was 420, and held the card at
+     * that height on a screen with no room for it: the title under the card
+     * is pinned to the bottom of the window, so a card that refuses to
+     * shrink is a card the title is drawn across. The card is now fitted to
+     * the room above the title (`deckCardSize`), and this only stops it
+     * collapsing on a window too short to be a phone at all.
+     */
+    cardHeightMin: 150,
     cx: [0.5, 0.5] as const,
     /** The deck's seat once the hero has cleared: the front card's top. */
     cyPx: { top: 118 },
@@ -1524,18 +1543,39 @@ export const CASE = {
    * leaving back to it move nothing.
    */
   phone: {
-    /** Room kept either side of the viewer, which is where the arrows sit. */
-    gutter: 56,
-    /** The tallest the viewer may be, and the line it is centred on. */
-    roomH: 540,
-    centreY: 400,
-    /** The caption, below the lowest edge the viewer can reach. */
-    captionGap: 26,
-    /** The title and year under the intro card. */
+    /**
+     * Room kept either side of the viewer.
+     *
+     * It was 56 — a lane each side for the step arrows — and that lane was
+     * paid for by every wide clip on the page: a desktop recording on a
+     * 390px phone was 278px across, most of a third of the screen given to
+     * two chevrons. The arrows sit either side of the counter now, so the
+     * margin is only a margin.
+     */
+    gutter: 12,
+    /**
+     * Where the viewer's room begins, below the back link. Authored px on
+     * the phone stage; the room ends `captionGap` above the caption, and
+     * the viewer is centred in whatever lies between (`phoneRoom`). The room
+     * is measured rather than authored, so a short window gives a shorter
+     * viewer instead of one drawn under its own caption.
+     */
+    roomTop: 60,
+    /** Air between the lowest edge the viewer can reach and its caption. */
+    captionGap: 24,
+    /** Air kept between the intro card and the title under it. */
     introGap: 24,
-    /** The step arrows: hit size, and their gap from the viewer. */
+    /**
+     * The title under the card: how far its block sits off the bottom of
+     * the stage, and how tall the block is — the part that is type (and so
+     * rides the type scale) and the part that is fixed spacing and the tick
+     * row. These are the home page's numbers: the deck's title and the
+     * project page's caption are the same line, so opening a project does
+     * not move the words under the card.
+     */
+    title: { inset: 36, type: 36, fixed: 56 },
+    /** The step arrows' hit size. A thumb's, so it does not scale. */
     arrow: 44,
-    arrowGap: 4,
     /**
      * The sideways swipe, which steps a shot: left for the next, right for
      * the one before, the way the arrows point. Travel in px past which a

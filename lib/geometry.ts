@@ -104,7 +104,11 @@ export function makeStage(
     ts: 1 + Math.max(0, s - 1) * SCALE.typeRate,
     // Split the slack. Inside the unclamped range this is exactly 0, so the
     // designed viewports are untouched.
-    top: (vh - ref.h * s) / 2,
+    //
+    // Never negative on a phone. Past the floor the stage is taller than the
+    // window, and centring it puts its top edge — the header — above the
+    // screen. A phone's chrome is pinned to the window's real edges instead.
+    top: mobile ? Math.max(0, (vh - ref.h * s) / 2) : (vh - ref.h * s) / 2,
   };
 }
 
@@ -122,6 +126,40 @@ export function stageY(stage: Stage, authored: number): number {
 }
 
 /* ------------------------------------------------------------------ *
+ * The phone's vertical budget
+ * ------------------------------------------------------------------ */
+
+/**
+ * Top of the title line under the card on a phone, in viewport px.
+ *
+ * The home deck's title and the project page's caption are the same line,
+ * pinned off the bottom of the stage. Everything above it — the deck card,
+ * the project viewer — is fitted to the room this leaves, which is what
+ * keeps a title from being drawn over the footage on a short screen.
+ */
+export function phoneTitleTop(stage: Stage): number {
+  const t = CASE.phone.title;
+  return (
+    stage.h -
+    Math.max(0, stage.top) -
+    stage.safeBottom -
+    t.inset * stage.s -
+    (t.type * stage.ts + t.fixed)
+  );
+}
+
+/**
+ * The room the project viewer has on a phone: from under the back link to
+ * just above the caption, and the width of the screen less a small margin.
+ */
+export function phoneRoom(stage: Stage) {
+  const p = CASE.phone;
+  const top = Math.max(0, stage.top) + stage.safeTop + p.roomTop * stage.s;
+  const bottom = Math.max(top + 1, phoneTitleTop(stage) - p.captionGap * stage.s);
+  return { top, bottom, w: Math.max(1, stage.w - p.gutter * 2) };
+}
+
+/* ------------------------------------------------------------------ *
  * Home deck
  * ------------------------------------------------------------------ */
 
@@ -129,11 +167,26 @@ export function stageY(stage: Stage, authored: number): number {
 export function deckCardSize(stage: Stage) {
   const cfg = stage.mobile ? DECK.mobile : DECK.desktop;
   const ref = stage.mobile ? MOBILE_REF.h : DESKTOP_REF.h;
-  const height = clamp(
+  let height = clamp(
     stage.h * (cfg.cardHeight / ref),
     cfg.cardHeightMin,
     cfg.cardHeight * SCALE.max,
   );
+  if (stage.mobile) {
+    /**
+     * Fitted to the room it has, not only scaled from the reference.
+     *
+     * The card's top is authored from the top of the stage and the title
+     * under it is pinned to the bottom, so the two close on each other as a
+     * window gets shorter — and the type between them does not shrink. The
+     * card gives way: it may be as tall as the gap above the title and no
+     * taller. On the designed viewports the gap is larger than the card and
+     * this changes nothing.
+     */
+    const top = stageY(stage, DECK.mobile.cyPx.top);
+    const room = phoneTitleTop(stage) - CASE.phone.introGap * stage.s - top;
+    height = Math.max(cfg.cardHeightMin, Math.min(height, room));
+  }
   const width = height * CARD_RATIO;
   return { width, height, radius: width * RADIUS_RATIO, k: height / cfg.cardHeight };
 }
@@ -620,12 +673,14 @@ export function caseFrame(
    * how they read rather than to be filled out.
    */
   const mobile = stage.mobile;
-  const phone = CASE.phone;
-  const roomW = Math.max(
-    1,
-    mobile ? stage.w - phone.gutter * 2 : stage.w - CASE.gutter * 2 * stage.sx,
-  );
-  const roomH = Math.max(1, (mobile ? phone.roomH : CASE.roomH) * s);
+  /**
+   * On a phone the room is measured, not authored: whatever lies between the
+   * back link and the caption, at nearly the full width of the screen. See
+   * `phoneRoom`.
+   */
+  const room = mobile ? phoneRoom(stage) : null;
+  const roomW = room ? room.w : Math.max(1, stage.w - CASE.gutter * 2 * stage.sx);
+  const roomH = room ? room.bottom - room.top : Math.max(1, CASE.roomH * s);
   const fit = Math.min(1, roomW / (base.w * s), roomH / (base.h * s));
 
   /**
@@ -685,8 +740,8 @@ export function caseFrame(
      * only if it changes around a fixed middle — pin the bottom edge instead
      * and the top jumps, which reads as two different players being swapped.
      */
-    const centre = mobile
-      ? stageY(stage, phone.centreY)
+    const centre = room
+      ? (room.top + room.bottom) / 2
       : stageY(stage, DESKTOP_REF.h * CASE.centreY);
     y = r > 0 ? L(centre - (base.h * fit * s) / 2, rc.top) : centre - h / 2;
   }
@@ -727,10 +782,9 @@ export function returnCardBox(stage: Stage) {
 
 /** Where the shot title and its meta line sit, clear of the largest frame. */
 export function caseCaption(stage: Stage): number {
-  if (stage.mobile) {
-    const p = CASE.phone;
-    return stageY(stage, p.centreY + p.roomH / 2 + p.captionGap);
-  }
+  // The same line the home deck's title sits on, with the viewer's room
+  // ending a fixed gap above it.
+  if (stage.mobile) return phoneTitleTop(stage);
   /**
    * Derived from where the viewer actually ends, not authored beside it.
    *

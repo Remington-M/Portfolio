@@ -20,6 +20,7 @@ import { heroRead, heroSpring, heroTune, onHeroReplay } from "@/lib/heroTuning";
 import Ticks from "@/components/Ticks";
 import { projects } from "@/lib/projects";
 import {
+  CASE,
   DECK,
   DECK_MOTION,
   CHROME_IN,
@@ -1000,7 +1001,7 @@ export default function Home() {
                   left: 24,
                   right: 24,
                   // Above the home indicator, where there is one.
-                  bottom: stage.top + stage.safeBottom + 36 * s,
+                  bottom: stage.top + stage.safeBottom + CASE.phone.title.inset * s,
                   zIndex: 56,
                   display: "flex",
                   flexDirection: "column",

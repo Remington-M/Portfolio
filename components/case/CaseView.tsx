@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, useMotionValueEvent, useTransform, useReducedMotion, type MotionValue } from "motion/react";
@@ -32,7 +33,8 @@ import { titleLines, type Project } from "@/lib/projects";
  *
  * On a phone the intro column is a title and a year under the card, the
  * card itself is the deck card where the deck left it, and the arrows sit
- * in the gutters either side of the viewer. Everything else is the same
+ * either side of the counter so the viewer can run the width of the screen.
+ * Everything else is the same
  * page: one shot per 780px of scroll. The device frame is not rendered here — it is
  * the deck card, still in the persistent media layer, retargeted to this page's
  * geometry. What lives here is everything around it: the intro text, the shot
@@ -323,8 +325,8 @@ export default function CaseView({ project }: { project: Project }) {
    * is not shown.
    */
   const mobile = stage.mobile;
-  const arrowSize = mobile ? CASE.phone.arrow * stage.s : 56 * stage.sx;
-  const arrowGap = mobile ? CASE.phone.arrowGap * stage.s : CASE.arrowGap * stage.sx;
+  const arrowSize = mobile ? CASE.phone.arrow : 56 * stage.sx;
+  const arrowGap = CASE.arrowGap * stage.sx;
   const arrowLeftX = useTransform(viewer.x, (x: number) => x - arrowGap - arrowSize);
   const arrowRightX = useTransform([viewer.x, viewer.w], ([x, w]) =>
     Math.min((x as number) + (w as number) + arrowGap, stage.w - arrowSize - 4 * stage.sx),
@@ -583,36 +585,53 @@ export default function CaseView({ project }: { project: Project }) {
             )}
             </motion.div>
 
-            {/* Ghost cards fanning out behind the frame as it becomes a card. */}
-            {ghostR > 0 ? (
-              <div
-                aria-hidden
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  zIndex: 51,
-                  pointerEvents: "none",
-                }}
-              >
-                {ghostCards(ghostR, stage).map((g) => (
-                  <div
-                    key={g.key}
-                    style={{
-                      position: "absolute",
-                      left: "50%",
-                      top: g.top,
-                      width: g.w,
-                      height: g.h,
-                      borderRadius: g.radius,
-                      background: "var(--ghost)",
-                      boxShadow: SHADOW.cardBack,
-                      opacity: g.opacity,
-                      transform: `translateX(calc(-50% + ${g.dx}px)) translateY(${g.dy}px) rotate(${g.rotate}deg) scale(${g.scale})`,
-                    }}
-                  />
-                ))}
-              </div>
-            ) : null}
+            {/*
+              Ghost cards fanning out behind the frame as it becomes a card.
+
+              BEHIND is the word that matters. On desktop this scroller sits
+              under the card layer, so anything drawn here is behind the
+              card. On a phone the scroller is raised above that layer to
+              take the touches, and everything in it is then in FRONT of the
+              card — the first ghost is the same size and in the same place,
+              so it covered the card exactly and the ending showed a blank
+              where the project's own clip should be. There the fan is drawn
+              outside the scroller, in a layer of its own under the cards.
+            */}
+            {ghostR > 0
+              ? (() => {
+                  const fan = (
+                    <div
+                      aria-hidden
+                      data-ghost-fan
+                      style={{
+                        position: mobile ? "fixed" : "absolute",
+                        inset: 0,
+                        zIndex: mobile ? 39 : 51,
+                        pointerEvents: "none",
+                      }}
+                    >
+                      {ghostCards(ghostR, stage).map((g) => (
+                        <div
+                          key={g.key}
+                          style={{
+                            position: "absolute",
+                            left: "50%",
+                            top: g.top,
+                            width: g.w,
+                            height: g.h,
+                            borderRadius: g.radius,
+                            background: "var(--ghost)",
+                            boxShadow: SHADOW.cardBack,
+                            opacity: g.opacity,
+                            transform: `translateX(calc(-50% + ${g.dx}px)) translateY(${g.dy}px) rotate(${g.rotate}deg) scale(${g.scale})`,
+                          }}
+                        />
+                      ))}
+                    </div>
+                  );
+                  return mobile ? createPortal(fan, document.body) : fan;
+                })()
+              : null}
 
             {/* Shot titles. Only one is visible at a time. */}
             <motion.div
@@ -681,6 +700,7 @@ export default function CaseView({ project }: { project: Project }) {
               than appearing on hover, since a control you have to discover by
               hovering solves nothing for the person who did not know to look.
             */}
+            {mobile ? null : (
             <motion.div style={{ opacity: chromeOpacity }}>
               <StepArrow
                 side="left"
@@ -701,6 +721,7 @@ export default function CaseView({ project }: { project: Project }) {
                 onClick={() => jump(Math.min(shotCount, active + 1))}
               />
             </motion.div>
+            )}
 
             <motion.div
               style={{
@@ -724,14 +745,48 @@ export default function CaseView({ project }: { project: Project }) {
                   i === 0 ? "Project overview" : `Shot ${i} of ${shotCount - 1}`
                 }
               />
+              {/*
+                On a phone the arrows sit either side of the counter rather
+                than either side of the viewer: the viewer then runs nearly
+                the width of the screen, which is the only way a desktop
+                recording is legible on one. Their hit areas are a thumb's
+                size and overhang the row, which stays the counter's height.
+              */}
               <div
                 style={{
-                  ...typeStyle(TYPE.numeral, ts),
-                  color: "var(--ink-3)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  height: TYPE.numeral.size * ts,
                 }}
               >
-                {String(active + 1).padStart(2, "0")} /{" "}
-                {String(shotCount).padStart(2, "0")}
+                {mobile ? (
+                  <StepArrow
+                    side="left"
+                    label="Previous shot"
+                    disabled={active === 0}
+                    size={arrowSize}
+                    onClick={() => jump(Math.max(0, active - 1))}
+                  />
+                ) : null}
+                <div
+                  style={{
+                    ...typeStyle(TYPE.numeral, ts),
+                    color: "var(--ink-3)",
+                  }}
+                >
+                  {String(active + 1).padStart(2, "0")} /{" "}
+                  {String(shotCount).padStart(2, "0")}
+                </div>
+                {mobile ? (
+                  <StepArrow
+                    side="right"
+                    label={active >= shotCount - 1 ? "Return to work" : "Next shot"}
+                    disabled={false}
+                    size={arrowSize}
+                    onClick={() => jump(Math.min(shotCount, active + 1))}
+                  />
+                ) : null}
               </div>
             </motion.div>
           </div>
@@ -756,9 +811,12 @@ function StepArrow({
   side: "left" | "right";
   label: string;
   disabled: boolean;
-  /** Top-left of the hit area, stage px, live from the viewer's box. */
-  x: MotionValue<number>;
-  y: MotionValue<number>;
+  /**
+   * Top-left of the hit area, stage px, live from the viewer's box. Left out
+   * on a phone, where the arrow is laid out in the counter's row instead.
+   */
+  x?: MotionValue<number>;
+  y?: MotionValue<number>;
   /** The hit area's side, stage px. */
   size: number;
   onClick: () => void;
@@ -783,9 +841,9 @@ function StepArrow({
       animate={{ opacity: disabled ? 0 : hover ? 0.8 : 0.34 }}
       transition={{ opacity: { duration: 0.3, ease: [...HOUSE] as [number, number, number, number] } }}
       style={{
-        position: "absolute",
-        left: x,
-        top: y,
+        ...(x && y
+          ? { position: "absolute" as const, left: x, top: y }
+          : { position: "relative" as const, flex: "0 0 auto" }),
         zIndex: 62,
         width: size,
         height: size,
@@ -857,6 +915,8 @@ function ShotTitle({
         x: on ? 0 : (active > index ? -1 : 1) * CASE.titleShift * stage.s,
       }}
       transition={SPRING.title}
+      // How `npm run verify:phone` finds the caption on screen.
+      data-shot-title={on ? "on" : "off"}
       style={{
         position: "absolute",
         left: 0,
@@ -878,7 +938,7 @@ function ShotTitle({
         {title}
       </div>
       {meta ? (
-        <div style={{ paddingTop: 7, ...typeStyle(TYPE.numeral, ts), color: "var(--ink-3)" }}>
+        <div style={{ paddingTop: 9, ...typeStyle(TYPE.numeral, ts), color: "var(--ink-3)" }}>
           {meta}
         </div>
       ) : null}

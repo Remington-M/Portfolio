@@ -2007,6 +2007,8 @@ export default function MediaLayer() {
           return (
             <motion.div
               key={project.slug}
+              // How `npm run verify:phone` finds the project page's viewer.
+              data-viewer={isSelected ? "" : undefined}
               /**
                * Flat when it can be. A card at rest in the stack has no turn
                * about the vertical, but the perspective and the zero rotateY
