@@ -14,7 +14,7 @@
  * know about.
  */
 import type { Project } from "./projects";
-import { media } from "./asset";
+import { media, phoneClip, PHONE_MEDIA } from "./asset";
 
 /**
  * Every clip a project will ask for, in the order it will ask.
@@ -25,11 +25,20 @@ import { media } from "./asset";
  * yet. It is also the one clip nobody waits for twice.
  */
 export function clipsToWarm(project: Project): string[] {
+  /**
+   * The same file the `<video>` will pick. On a phone that is the smaller
+   * copy where one exists, chosen by the same media query its `<source>`
+   * carries — warm the full clip there and the cache holds a file nothing
+   * asks for while the element downloads the other one cold.
+   */
+  const phone =
+    typeof window !== "undefined" && window.matchMedia(PHONE_MEDIA).matches;
+  const pick = (src?: string) => (phone && phoneClip(src)) || media(src);
   const seen = new Set<string>();
   const out: string[] = [];
   for (const shot of project.shots) {
-    const url = media(shot.src);
-    if (!url || url === media(project.src) || seen.has(url)) continue;
+    const url = pick(shot.src);
+    if (!url || url === pick(project.src) || seen.has(url)) continue;
     seen.add(url);
     out.push(url);
   }

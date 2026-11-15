@@ -1,5 +1,6 @@
 "use client";
 
+import { tuneKeysLive } from "@/lib/tuneAccess";
 import { useEffect, useRef, useState } from "react";
 import {
   derived as tuned,
@@ -34,7 +35,7 @@ export default function TunePanel() {
     // sequence's own panel, which sits in the same corner.
     if (
       new URLSearchParams(window.location.search).has("tune") &&
-      window.location.pathname.startsWith("/work")
+      window.location.pathname.includes("/work/")
     )
       setOpen(true);
     const onKey = (e: KeyboardEvent) => {
@@ -42,6 +43,7 @@ export default function TunePanel() {
       if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)))
         return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (!tuneKeysLive()) return;
       if (e.key === "t" || e.key === "T") setOpen((v) => !v);
     };
     window.addEventListener("keydown", onKey);

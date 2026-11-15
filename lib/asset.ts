@@ -1,4 +1,5 @@
 import { CLIPS_WITH_POSTER } from "./posters.generated";
+import { CLIPS_WITH_PHONE } from "./renditions.generated";
 
 /**
  * Prefix a path into the `public` folder with the deployment's base path.
@@ -60,4 +61,25 @@ export function media(path?: string): string | undefined {
 export function poster(src?: string): string | undefined {
   if (!src || !CLIPS_WITH_POSTER.has(src)) return undefined;
   return media(src.replace(/\.mp4$/, ".jpg"));
+}
+
+/**
+ * When a `<source>` is the phone's. Narrower than the layout's own mobile
+ * breakpoint on purpose: a tablet takes the phone LAYOUT but draws the
+ * viewer twice as wide, and wants the full clip.
+ */
+export const PHONE_MEDIA = "(max-width: 600px)";
+
+/**
+ * The smaller copy of a clip for phones, if one was encoded.
+ *
+ * Offered as a `<source media>` ahead of the full clip, so the browser picks
+ * before it fetches anything and a phone never downloads the large file. A
+ * browser too old to read `media` on a video source skips nothing and plays
+ * the first one it is given — the small one, which is the safe way to be
+ * wrong. `undefined` when no copy exists, which leaves the source out.
+ */
+export function phoneClip(src?: string): string | undefined {
+  if (!src || !CLIPS_WITH_PHONE.has(src)) return undefined;
+  return media(src.replace(/\/([^/]+)$/, "/phone/$1"));
 }

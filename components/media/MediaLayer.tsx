@@ -20,7 +20,7 @@ import {
 import Link from "next/link";
 import { useStage } from "./stage";
 import { openingIndex, projects, stripeFill, type Shot } from "@/lib/projects";
-import { asset, media, poster } from "@/lib/asset";
+import { asset, media, phoneClip, poster, PHONE_MEDIA } from "@/lib/asset";
 import {
   CASE,
   SHADOW,
@@ -2007,6 +2007,8 @@ export default function MediaLayer() {
           return (
             <motion.div
               key={project.slug}
+              // How `npm run verify:phone` finds the project page's viewer.
+              data-viewer={isSelected ? "" : undefined}
               /**
                * Flat when it can be. A card at rest in the stack has no turn
                * about the vertical, but the perspective and the zero rotateY
@@ -2391,6 +2393,9 @@ function ShotClip({
       {shot.srcWebm ? (
         <source src={media(shot.srcWebm)} type="video/webm" />
       ) : null}
+      {phoneClip(shot.src) ? (
+        <source src={phoneClip(shot.src)} type="video/mp4" media={PHONE_MEDIA} />
+      ) : null}
       {shot.src ? <source src={media(shot.src)} type="video/mp4" /> : null}
     </motion.video>
   );
@@ -2754,6 +2759,9 @@ function CardFace({
           >
             {project.srcWebm ? (
               <source src={media(project.srcWebm)} type="video/webm" />
+            ) : null}
+            {phoneClip(project.src) ? (
+              <source src={phoneClip(project.src)} type="video/mp4" media={PHONE_MEDIA} />
             ) : null}
             {project.src ? (
               <source src={media(project.src)} type="video/mp4" />
